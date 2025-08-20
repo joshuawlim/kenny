@@ -1,5 +1,6 @@
 import Foundation
 import UniformTypeIdentifiers
+import CryptoKit
 
 class FilesIngester {
     private let database: Database
@@ -117,8 +118,8 @@ class FilesIngester {
             "source_id": filePath,
             "source_path": filePath,
             "hash": currentHash,
-            "created_at": Int(resourceValues.creationDate?.timeIntervalSince1970 ?? now),
-            "updated_at": Int(resourceValues.contentModificationDate?.timeIntervalSince1970 ?? now),
+            "created_at": Int(resourceValues.creationDate?.timeIntervalSince1970 ?? Double(now)),
+            "updated_at": Int(resourceValues.contentModificationDate?.timeIntervalSince1970 ?? Double(now)),
             "last_seen_at": now,
             "deleted": false
         ]
@@ -133,8 +134,8 @@ class FilesIngester {
                 "mime_type": resourceValues.contentType?.preferredMIMEType ?? NSNull(),
                 "parent_directory": fileURL.deletingLastPathComponent().path,
                 "is_directory": false,
-                "creation_date": Int(resourceValues.creationDate?.timeIntervalSince1970 ?? now),
-                "modification_date": Int(resourceValues.contentModificationDate?.timeIntervalSince1970 ?? now),
+                "creation_date": Int(resourceValues.creationDate?.timeIntervalSince1970 ?? Double(now)),
+                "modification_date": Int(resourceValues.contentModificationDate?.timeIntervalSince1970 ?? Double(now)),
                 "spotlight_content": textContent ?? NSNull()
             ]
             
@@ -164,9 +165,9 @@ class FilesIngester {
         }
     }
     
-    private func extractTextContent(from fileURL: URL, extension: String) async -> String? {
+    private func extractTextContent(from fileURL: URL, extension fileExtension: String) async -> String? {
         // Extract text content based on file type
-        switch extension {
+        switch fileExtension {
         case "txt", "md", "markdown", "rtf":
             return try? String(contentsOf: fileURL, encoding: .utf8)
             
@@ -205,21 +206,4 @@ class FilesIngester {
     }
 }
 
-// MARK: - Data Extensions
-extension Data {
-    func sha256Hash() -> String {
-        #if canImport(CryptoKit)
-        import CryptoKit
-        let digest = SHA256.hash(data: self)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-        #else
-        import CommonCrypto
-        let hash = self.withUnsafeBytes { bytes in
-            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(self.count), &hash)
-            return hash
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-        #endif
-    }
-}
+// Data sha256Hash extension already exists in Utilities.swift

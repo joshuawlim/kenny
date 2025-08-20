@@ -28,7 +28,7 @@ class IngestManager {
         async let contactStats = ingestContacts(isFullSync: true)
         
         // Wait for all ingests to complete
-        async let whatsappStats = ingestWhatsApp(isFullSync: isFullSync)
+        async let whatsappStats = ingestWhatsApp(isFullSync: true)
         
         let results = try await [
             mailStats, eventStats, reminderStats, 
@@ -87,13 +87,13 @@ class IngestManager {
     }
     
     // MARK: - Mail Ingestion
-    private func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let mailIngester = MailIngester(database: database)
         return try await mailIngester.ingestMail(isFullSync: isFullSync, since: since)
     }
     
     // MARK: - Calendar Ingestion
-    private func ingestCalendar(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestCalendar(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "calendar")
         
         // Request calendar access
@@ -174,8 +174,8 @@ class IngestManager {
                 "source_id": event.eventIdentifier,
                 "source_path": "calshow:\(event.eventIdentifier)",
                 "hash": "\(event.title ?? "")\(event.startDate)\(event.endDate ?? Date())\(content)".sha256(),
-                "created_at": Int(event.creationDate?.timeIntervalSince1970 ?? now),
-                "updated_at": Int(event.lastModifiedDate?.timeIntervalSince1970 ?? now),
+                "created_at": Int(event.creationDate?.timeIntervalSince1970 ?? Double(now)),
+                "updated_at": Int(event.lastModifiedDate?.timeIntervalSince1970 ?? Double(now)),
                 "last_seen_at": now,
                 "deleted": false
             ]
@@ -198,7 +198,7 @@ class IngestManager {
                     "end_time": event.endDate != nil ? Int(event.endDate!.timeIntervalSince1970) : NSNull(),
                     "is_all_day": event.isAllDay,
                     "location": event.location ?? NSNull(),
-                    "attendees": (try? JSONEncoder().encode(attendees))?.base64EncodedString() ?? NSNull(),
+                    "attendees": NSNull(), // TODO: Fix attendees encoding
                     "organizer_name": event.organizer?.name ?? NSNull(),
                     "organizer_email": extractEmailFromURL(event.organizer?.url) ?? NSNull(),
                     "status": eventStatusString(event.status),
@@ -222,7 +222,7 @@ class IngestManager {
     }
     
     // MARK: - Reminders Ingestion
-    private func ingestReminders(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestReminders(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "reminders")
         
         // Request reminders access
@@ -316,8 +316,8 @@ class IngestManager {
             "source_id": reminder.calendarItemIdentifier,
             "source_path": "x-apple-reminder://\(reminder.calendarItemIdentifier)",
             "hash": "\(reminder.title ?? "")\(content)\(reminder.isCompleted)".sha256(),
-            "created_at": Int(reminder.creationDate?.timeIntervalSince1970 ?? now),
-            "updated_at": Int(reminder.lastModifiedDate?.timeIntervalSince1970 ?? now),
+            "created_at": Int(reminder.creationDate?.timeIntervalSince1970 ?? Double(now)),
+            "updated_at": Int(reminder.lastModifiedDate?.timeIntervalSince1970 ?? Double(now)),
             "last_seen_at": now,
             "deleted": false
         ]
@@ -368,17 +368,17 @@ class IngestManager {
         }
     }
     
-    private func ingestNotes(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestNotes(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let notesIngester = NotesIngester(database: database)
         return try await notesIngester.ingestNotes(isFullSync: isFullSync, since: since)
     }
     
-    private func ingestFiles(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestFiles(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let filesIngester = FilesIngester(database: database)
         return try await filesIngester.ingestFiles(isFullSync: isFullSync, since: since)
     }
     
-    private func ingestMessages(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestMessages(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let messagesIngester = MessagesIngester(database: database)
         return try await messagesIngester.ingestMessages(isFullSync: isFullSync, since: since)
     }
@@ -388,7 +388,7 @@ class IngestManager {
         return try await whatsappIngester.ingestWhatsApp(isFullSync: isFullSync, since: since)
     }
     
-    private func ingestContacts(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestContacts(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "contacts")
         
         // Request contacts access
@@ -425,7 +425,7 @@ class IngestManager {
             contentParts.append(contact.emailAddresses.map { $0.value as String }.joined(separator: " "))
             contentParts.append(contact.phoneNumbers.map { $0.value.stringValue }.joined(separator: " "))
             
-            let content = contentParts.compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " ")
+            let content = contentParts.compactMap { $0.isEmpty == false ? $0 : nil }.joined(separator: " ")
             
             let docData: [String: Any] = [
                 "id": documentId,
@@ -549,6 +549,9 @@ class IngestManager {
         case .declined: return "declined"
         case .tentative: return "tentative"
         case .pending: return "pending"
+        case .delegated: return "delegated"
+        case .completed: return "completed"
+        case .inProcess: return "in_process"
         case .unknown: return "unknown"
         @unknown default: return "unknown"
         }
@@ -652,24 +655,7 @@ struct IngestStats {
     }
 }
 
-enum IngestError: Error {
-    case permissionDenied(String)
-    case dataCorruption
-    case networkError
-}
-
-// MARK: - String Extensions
-extension String {
-    func sha256() -> String {
-        let data = self.data(using: .utf8) ?? Data()
-        let hash = data.withUnsafeBytes { bytes in
-            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
-            return hash
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-    }
-}
+// IngestError and sha256() extensions are defined in Utilities.swift
 
 #if canImport(CommonCrypto)
 import CommonCrypto

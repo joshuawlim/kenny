@@ -1,5 +1,6 @@
 import Foundation
 import OSAKit
+import CryptoKit
 
 class NotesIngester {
     private let database: Database
@@ -99,7 +100,7 @@ class NotesIngester {
                 let osascript = OSAScript(source: script, language: OSALanguage(forName: "AppleScript"))
                 var error: NSDictionary?
                 
-                let result = osascript?.executeAndReturnError(&error)
+                let result = osascript.executeAndReturnError(&error)
                 
                 if let error = error {
                     continuation.resume(throwing: NSError(domain: "AppleScriptError", code: 1, userInfo: error as? [String: Any]))
@@ -277,22 +278,4 @@ class NotesIngester {
     }
 }
 
-// MARK: - String Extension (if not already defined)
-extension String {
-    func sha256() -> String {
-        let data = self.data(using: .utf8) ?? Data()
-        #if canImport(CryptoKit)
-        import CryptoKit
-        let digest = SHA256.hash(data: data)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-        #else
-        import CommonCrypto
-        let hash = data.withUnsafeBytes { bytes in
-            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
-            return hash
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-        #endif
-    }
-}
+// SHA256 extension is in Utilities.swift

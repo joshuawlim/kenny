@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import CryptoKit
 
 // WhatsApp database extraction based on https://github.com/lharries/whatsapp-mcp
 class WhatsAppIngester {
@@ -351,22 +352,4 @@ class WhatsAppIngester {
     }
 }
 
-// MARK: - String Extension
-extension String {
-    func sha256() -> String {
-        let data = self.data(using: .utf8) ?? Data()
-        #if canImport(CryptoKit)
-        import CryptoKit
-        let digest = SHA256.hash(data: data)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-        #else
-        import CommonCrypto
-        let hash = data.withUnsafeBytes { bytes in
-            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
-            return hash
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-        #endif
-    }
-}
+// SHA256 extension is in Utilities.swift

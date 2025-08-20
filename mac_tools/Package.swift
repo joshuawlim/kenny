@@ -8,7 +8,8 @@ let package = Package(
     ],
     products: [
         .executable(name: "mac_tools", targets: ["mac_tools"]),
-        .executable(name: "db_cli", targets: ["DatabaseCLI"])
+        .executable(name: "db_cli", targets: ["DatabaseCLI"]),
+        .executable(name: "orchestrator_cli", targets: ["OrchestratorCLI"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
@@ -42,8 +43,18 @@ let package = Package(
                 "NotesIngester.swift",
                 "MessagesIngester.swift",
                 "WhatsAppIngester.swift",
-                "FilesIngester.swift"
+                "FilesIngester.swift",
+                "Orchestrator.swift"
             ]
+        ),
+        .executableTarget(
+            name: "OrchestratorCLI",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                "DatabaseCore"
+            ],
+            path: "src",
+            sources: ["OrchestratorCLI.swift"]
         )
     ]
 )

@@ -103,7 +103,7 @@ class MailIngester {
                 let osascript = OSAScript(source: script, language: OSALanguage(forName: "AppleScript"))
                 var error: NSDictionary?
                 
-                let result = osascript?.executeAndReturnError(&error)
+                let result = osascript.executeAndReturnError(&error)
                 
                 if let error = error {
                     continuation.resume(throwing: NSError(domain: "AppleScriptError", code: 1, userInfo: error as? [String: Any]))

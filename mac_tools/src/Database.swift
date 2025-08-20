@@ -1,11 +1,11 @@
 import Foundation
 import SQLite3
 
-class Database {
+public class Database {
     private var db: OpaquePointer?
     private let dbPath: String
     
-    init(path: String? = nil) {
+    public init(path: String? = nil) {
         if let customPath = path {
             dbPath = customPath
         } else {
@@ -116,7 +116,7 @@ class Database {
         return results
     }
     
-    func insert(_ table: String, data: [String: Any]) -> Bool {
+    public func insert(_ table: String, data: [String: Any]) -> Bool {
         let columns = data.keys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
         let sql = "INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))"
@@ -235,9 +235,9 @@ class Database {
 
 // MARK: - Search Extensions
 extension Database {
-    func searchMultiDomain(_ query: String, types: [String] = [], limit: Int = 20) -> [SearchResult] {
+    public func searchMultiDomain(_ searchQuery: String, types: [String] = [], limit: Int = 20) -> [SearchResult] {
         var whereClause = "documents_fts MATCH ?"
-        var parameters: [Any] = [query]
+        var parameters: [Any] = [searchQuery]
         
         if !types.isEmpty {
             let typeList = types.map { "'\($0)'" }.joined(separator: ",")
@@ -307,14 +307,34 @@ extension Database {
             )
         }
     }
+    
+    /// Get database statistics
+    public func getStats() -> [String: Any] {
+        let documentCount = query("SELECT COUNT(*) as count FROM documents").first?["count"] as? Int64 ?? 0
+        let emailCount = query("SELECT COUNT(*) as count FROM emails").first?["count"] as? Int64 ?? 0
+        let eventCount = query("SELECT COUNT(*) as count FROM events").first?["count"] as? Int64 ?? 0
+        let contactCount = query("SELECT COUNT(*) as count FROM contacts").first?["count"] as? Int64 ?? 0
+        let messageCount = query("SELECT COUNT(*) as count FROM messages").first?["count"] as? Int64 ?? 0
+        let fileCount = query("SELECT COUNT(*) as count FROM files").first?["count"] as? Int64 ?? 0
+        
+        return [
+            "total_documents": documentCount,
+            "emails": emailCount,
+            "events": eventCount,
+            "contacts": contactCount,
+            "messages": messageCount,
+            "files": fileCount,
+            "database_path": dbPath
+        ]
+    }
 }
 
-struct SearchResult: Codable {
-    let id: String
-    let type: String
-    let title: String
-    let snippet: String
-    let contextInfo: String
-    let rank: Double
-    let sourcePath: String?
+public struct SearchResult: Codable {
+    public let id: String
+    public let type: String
+    public let title: String
+    public let snippet: String
+    public let contextInfo: String
+    public let rank: Double
+    public let sourcePath: String?
 }

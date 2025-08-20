@@ -71,7 +71,7 @@ class MessagesIngester {
     }
     
     private func queryMessages(isFullSync: Bool, since: Date?) throws -> [[String: Any]] {
-        let sinceTimestamp = since?.timeIntervalSince2001 ?? 0 // Messages uses 2001 epoch
+        let sinceTimestamp = (since?.timeIntervalSince1970 ?? 0) - 978307200 // Convert to 2001 epoch (Messages uses 2001)
         let limit = isFullSync ? 1000 : 200
         
         // Messages database schema (simplified):
@@ -254,22 +254,4 @@ class MessagesIngester {
     }
 }
 
-// MARK: - String Extension
-extension String {
-    func sha256() -> String {
-        let data = self.data(using: .utf8) ?? Data()
-        #if canImport(CryptoKit)
-        import CryptoKit
-        let digest = SHA256.hash(data: data)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-        #else
-        import CommonCrypto
-        let hash = data.withUnsafeBytes { bytes in
-            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
-            return hash
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-        #endif
-    }
-}
+// SHA256 extension is in Utilities.swift

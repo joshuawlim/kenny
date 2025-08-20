@@ -41,22 +41,7 @@ extension Data {
     }
 }
 
-// MARK: - Ingest Stats
-struct IngestStats {
-    var source: String = ""
-    var itemsProcessed: Int = 0
-    var itemsCreated: Int = 0
-    var itemsUpdated: Int = 0
-    var errors: Int = 0
-    var duration: TimeInterval = 0
-    
-    mutating func combine(with other: IngestStats) {
-        itemsProcessed += other.itemsProcessed
-        itemsCreated += other.itemsCreated
-        itemsUpdated += other.itemsUpdated
-        errors += other.errors
-    }
-}
+// IngestStats moved to IngestManager.swift to avoid duplication
 
 // MARK: - Ingest Error
 enum IngestError: Error {
