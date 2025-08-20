@@ -49,23 +49,33 @@ public class Database {
     
     @discardableResult
     func execute(_ sql: String) -> Bool {
-        var statement: OpaquePointer?
-        defer { sqlite3_finalize(statement) }
+        // Handle multi-statement SQL by splitting and executing each statement
+        let statements = sql.components(separatedBy: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         
-        if sqlite3_prepare_v2(db, sql, -1, &statement, nil) != SQLITE_OK {
-            print("ERROR preparing statement: \(String(cString: sqlite3_errmsg(db)))")
-            return false
-        }
-        
-        if sqlite3_step(statement) != SQLITE_DONE {
-            print("ERROR executing statement: \(String(cString: sqlite3_errmsg(db)))")
-            return false
+        for statement in statements {
+            var stmt: OpaquePointer?
+            defer { sqlite3_finalize(stmt) }
+            
+            if sqlite3_prepare_v2(db, statement, -1, &stmt, nil) != SQLITE_OK {
+                print("ERROR preparing statement: \(String(cString: sqlite3_errmsg(db)))")
+                print("Statement: \(statement)")
+                return false
+            }
+            
+            let result = sqlite3_step(stmt)
+            if result != SQLITE_DONE && result != SQLITE_ROW {
+                print("ERROR executing statement: \(String(cString: sqlite3_errmsg(db)))")
+                print("Statement: \(statement)")
+                return false
+            }
         }
         
         return true
     }
     
-    func query(_ sql: String, parameters: [Any] = []) -> [[String: Any]] {
+    public func query(_ sql: String, parameters: [Any] = []) -> [[String: Any]] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         
@@ -117,7 +127,8 @@ public class Database {
     }
     
     public func insert(_ table: String, data: [String: Any]) -> Bool {
-        let columns = data.keys.joined(separator: ", ")
+        let sortedKeys = data.keys.sorted()
+        let columns = sortedKeys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
         let sql = "INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))"
         
@@ -129,8 +140,8 @@ public class Database {
             return false
         }
         
-        // Bind parameters in order
-        for (index, key) in data.keys.sorted().enumerated() {
+        // Bind parameters in same order as columns
+        for (index, key) in sortedKeys.enumerated() {
             let value = data[key]
             let bindIndex = Int32(index + 1)
             
@@ -169,23 +180,132 @@ public class Database {
     
     // Migration system
     private func runMigrations() {
-        let currentVersion = getCurrentSchemaVersion()
-        let migrationFiles = getMigrationFiles()
+        // TEMPORARY: Skip migration system and create basic schema directly
+        createSchemaMigrationsTable()
         
-        for file in migrationFiles.sorted() {
-            let version = extractVersionFromFilename(file)
-            if version > currentVersion {
-                print("Running migration: \(file)")
-                if let migrationSQL = loadMigrationSQL(file) {
-                    if execute(migrationSQL) {
-                        updateSchemaVersion(version)
-                        print("Migration \(version) completed")
-                    } else {
-                        fatalError("Migration \(version) failed")
-                    }
-                }
+        let currentVersion = getCurrentSchemaVersion()
+        if currentVersion == 0 {
+            // Create basic schema directly for now
+            let basicSchema = """
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT,
+                app_source TEXT NOT NULL,
+                source_id TEXT,
+                source_path TEXT,
+                hash TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                deleted BOOLEAN DEFAULT FALSE,
+                metadata_json TEXT,
+                UNIQUE(app_source, source_id)
+            );
+            
+            CREATE TABLE IF NOT EXISTS emails (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                thread_id TEXT,
+                message_id TEXT UNIQUE,
+                from_address TEXT,
+                from_name TEXT,
+                to_addresses TEXT,
+                cc_addresses TEXT,
+                bcc_addresses TEXT,
+                date_sent INTEGER,
+                date_received INTEGER,
+                is_read BOOLEAN DEFAULT FALSE,
+                is_flagged BOOLEAN DEFAULT FALSE,
+                mailbox TEXT,
+                snippet TEXT
+            );
+            
+            CREATE TABLE IF NOT EXISTS messages (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                thread_id TEXT,
+                from_contact TEXT,
+                date_sent INTEGER,
+                is_from_me BOOLEAN DEFAULT FALSE,
+                is_read BOOLEAN DEFAULT FALSE,
+                service TEXT,
+                chat_name TEXT,
+                has_attachments BOOLEAN DEFAULT FALSE
+            );
+            
+            CREATE TABLE IF NOT EXISTS events (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                location TEXT
+            );
+            
+            CREATE TABLE IF NOT EXISTS contacts (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                first_name TEXT,
+                last_name TEXT,
+                full_name TEXT
+            );
+            
+            CREATE TABLE IF NOT EXISTS files (
+                document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                file_size INTEGER,
+                mime_type TEXT,
+                parent_directory TEXT
+            );
+            
+            CREATE TABLE IF NOT EXISTS orchestrator_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event TEXT NOT NULL,
+                type TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                success BOOLEAN,
+                duration_ms INTEGER,
+                error TEXT,
+                UNIQUE(request_id, event)
+            );
+            
+            CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                title, content, content='documents', content_rowid='rowid'
+            );
+            
+            -- FTS triggers
+            DROP TRIGGER IF EXISTS documents_fts_insert;
+            CREATE TRIGGER documents_fts_insert AFTER INSERT ON documents BEGIN
+                INSERT INTO documents_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+            END;
+            
+            DROP TRIGGER IF EXISTS documents_fts_delete;  
+            CREATE TRIGGER documents_fts_delete AFTER DELETE ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content);
+            END;
+            
+            DROP TRIGGER IF EXISTS documents_fts_update;
+            CREATE TRIGGER documents_fts_update AFTER UPDATE ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content);
+                INSERT INTO documents_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+            END;
+            """
+            
+            if execute(basicSchema) {
+                updateSchemaVersion(1)
+                print("Basic schema created successfully")
+            } else {
+                fatalError("Failed to create basic schema")
             }
         }
+    }
+    
+    private func createSchemaMigrationsTable() {
+        let sql = """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at INTEGER NOT NULL
+        )
+        """
+        execute(sql)
     }
     
     private func getCurrentSchemaVersion() -> Int {
@@ -203,10 +323,14 @@ public class Database {
     
     private func getMigrationFiles() -> [String] {
         let migrationsPath = getProjectRoot() + "/migrations"
+        print("Looking for migrations in: \(migrationsPath)")
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: migrationsPath) else {
+            print("Failed to read migration directory: \(migrationsPath)")
             return []
         }
-        return files.filter { $0.hasSuffix(".sql") }
+        let sqlFiles = files.filter { $0.hasSuffix(".sql") }
+        print("Found migration files: \(sqlFiles)")
+        return sqlFiles
     }
     
     private func extractVersionFromFilename(_ filename: String) -> Int {
@@ -228,8 +352,30 @@ public class Database {
     
     private func getProjectRoot() -> String {
         // In a real app, this would be the app bundle or a known path
-        // For now, assume we're running from the project directory
-        return FileManager.default.currentDirectoryPath
+        // For now, try to find the project directory containing migrations
+        let currentPath = FileManager.default.currentDirectoryPath
+        print("Current directory: \(currentPath)")
+        
+        // Try current directory first
+        let migrationsPath1 = currentPath + "/migrations"
+        if FileManager.default.fileExists(atPath: migrationsPath1) {
+            return currentPath
+        }
+        
+        // Try mac_tools subdirectory
+        let migrationsPath2 = currentPath + "/mac_tools/migrations"  
+        if FileManager.default.fileExists(atPath: migrationsPath2) {
+            return currentPath + "/mac_tools"
+        }
+        
+        // Fallback to hardcoded path
+        let fallbackPath = "/Users/joshwlim/Documents/Kenny/mac_tools"
+        if FileManager.default.fileExists(atPath: fallbackPath + "/migrations") {
+            return fallbackPath
+        }
+        
+        print("Could not find migrations directory, using current: \(currentPath)")
+        return currentPath
     }
 }
 
@@ -249,9 +395,9 @@ extension Database {
                    snippet(documents_fts, 1, '<mark>', '</mark>', '...', 32) as search_snippet,
                    bm25(documents_fts) as rank,
                    CASE d.type
-                       WHEN 'email' THEN e.from_name || ' <' || e.from_address || '>'
-                       WHEN 'event' THEN ev.location
-                       WHEN 'file' THEN f.file_path
+                       WHEN 'email' THEN COALESCE(e.from_name, '') || ' <' || COALESCE(e.from_address, '') || '>'
+                       WHEN 'event' THEN COALESCE(ev.location, '')
+                       WHEN 'file' THEN COALESCE(f.parent_directory, '') || '/' || d.title
                        ELSE d.app_source
                    END as context_info
             FROM documents_fts 

@@ -272,10 +272,21 @@ CREATE INDEX idx_jobs_scheduled ON jobs(scheduled_for);
 CREATE INDEX idx_jobs_status ON jobs(status);
 CREATE INDEX idx_jobs_type ON jobs(type);
 
--- Schema version tracking
-CREATE TABLE schema_migrations (
-    version INTEGER PRIMARY KEY,
-    applied_at INTEGER NOT NULL
+-- Orchestrator logs 
+CREATE TABLE orchestrator_logs (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    event TEXT NOT NULL,                    -- 'request_received', 'request_completed'
+    type TEXT NOT NULL,                     -- Request type
+    user_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    success BOOLEAN,
+    duration_ms INTEGER,
+    error TEXT
 );
 
-INSERT INTO schema_migrations (version, applied_at) VALUES (1, strftime('%s', 'now'));
+CREATE INDEX idx_orchestrator_logs_timestamp ON orchestrator_logs(timestamp);
+CREATE INDEX idx_orchestrator_logs_request_id ON orchestrator_logs(request_id);
+CREATE INDEX idx_orchestrator_logs_type ON orchestrator_logs(type);
+
+-- Schema version tracking (table created by bootstrap, version inserted by migration system)

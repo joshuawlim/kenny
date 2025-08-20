@@ -196,12 +196,15 @@ public class Orchestrator {
     // MARK: - Logging
     
     private func logRequest(_ request: UserRequest) {
-        let logEntry = [
+        let logEntry: [String: Any] = [
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "event": "request_received",
             "type": request.type.rawValue,
             "user_id": request.userId,
-            "request_id": request.requestId
+            "request_id": request.requestId,
+            "success": NSNull(),
+            "duration_ms": NSNull(),
+            "error": NSNull()
         ]
         
         database.insert("orchestrator_logs", data: logEntry)
@@ -210,7 +213,7 @@ public class Orchestrator {
     private func logResponse(request: UserRequest, response: UserResponse?, duration: TimeInterval, error: Error?) {
         let logEntry: [String: Any] = [
             "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "event": "request_completed",
+            "event": "request_completed", 
             "type": request.type.rawValue,
             "user_id": request.userId,
             "request_id": request.requestId,

@@ -28,7 +28,7 @@ class WhatsAppIngester {
         }
         defer { closeWhatsAppDatabase() }
         
-        // Query messages
+        // Query messages - check for Go bridge database first
         let messages = try queryWhatsAppMessages(isFullSync: isFullSync, since: since)
         print("Found \(messages.count) WhatsApp messages to process")
         
@@ -41,7 +41,21 @@ class WhatsAppIngester {
     }
     
     private func findWhatsAppDatabase() -> String? {
-        // WhatsApp Desktop stores databases in various locations
+        // First, try to find the Go bridge database (our WhatsApp logger)
+        let bridgePaths = [
+            "/Users/joshwlim/Documents/Kenny/whatsapp-logger/whatsapp_messages.db",
+            "./whatsapp_messages.db",
+            "../whatsapp-logger/whatsapp_messages.db"
+        ]
+        
+        for path in bridgePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                print("Found WhatsApp Go bridge database at: \(path)")
+                return path
+            }
+        }
+        
+        // Fallback: WhatsApp Desktop native databases
         let possiblePaths = [
             "\(NSHomeDirectory())/Library/Application Support/WhatsApp/Databases/ChatStorage.sqlite",
             "\(NSHomeDirectory())/Library/Containers/WhatsApp/Data/Library/Application Support/WhatsApp/Databases/ChatStorage.sqlite",
@@ -50,6 +64,7 @@ class WhatsAppIngester {
         
         for path in possiblePaths {
             if FileManager.default.fileExists(atPath: path) {
+                print("Found WhatsApp native database at: \(path)")
                 return path
             }
         }
@@ -86,11 +101,94 @@ class WhatsAppIngester {
         }
     }
     
+    // Query Go bridge database (messages.db from our WhatsApp logger)
+    private func queryBridgeMessages(sinceTimestamp: Double, limit: Int) -> [[String: Any]]? {
+        // Check if this database has the Go bridge schema
+        var statement: OpaquePointer?
+        let testQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"
+        
+        if sqlite3_prepare_v2(whatsappDB, testQuery, -1, &statement, nil) != SQLITE_OK {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        
+        if sqlite3_step(statement) != SQLITE_ROW {
+            return nil  // No 'messages' table found
+        }
+        
+        print("Detected Go bridge database schema")
+        
+        // Query the Go bridge schema
+        let bridgeQuery = """
+            SELECT 
+                m.id as message_id,
+                m.chat_jid,
+                m.sender,
+                m.content as text,
+                strftime('%s', m.timestamp) as timestamp,
+                m.is_from_me,
+                m.media_type,
+                m.filename,
+                m.url,
+                COALESCE(c.name, m.chat_jid) as chat_title
+            FROM messages m
+            LEFT JOIN chats c ON m.chat_jid = c.jid
+            WHERE strftime('%s', m.timestamp) > ?
+            ORDER BY m.timestamp DESC
+            LIMIT ?
+        """
+        
+        var bridgeStatement: OpaquePointer?
+        defer { sqlite3_finalize(bridgeStatement) }
+        
+        if sqlite3_prepare_v2(whatsappDB, bridgeQuery, -1, &bridgeStatement, nil) != SQLITE_OK {
+            return nil
+        }
+        
+        sqlite3_bind_double(bridgeStatement, 1, sinceTimestamp)
+        sqlite3_bind_int(bridgeStatement, 2, Int32(limit))
+        
+        var messages: [[String: Any]] = []
+        
+        while sqlite3_step(bridgeStatement) == SQLITE_ROW {
+            var messageData: [String: Any] = [:]
+            
+            messageData["message_id"] = String(cString: sqlite3_column_text(bridgeStatement, 0))
+            messageData["chat_jid"] = String(cString: sqlite3_column_text(bridgeStatement, 1))
+            messageData["sender"] = String(cString: sqlite3_column_text(bridgeStatement, 2))
+            messageData["text"] = String(cString: sqlite3_column_text(bridgeStatement, 3))
+            messageData["timestamp"] = sqlite3_column_double(bridgeStatement, 4)
+            messageData["is_from_me"] = sqlite3_column_int(bridgeStatement, 5) != 0
+            
+            if sqlite3_column_text(bridgeStatement, 6) != nil {
+                messageData["media_type"] = String(cString: sqlite3_column_text(bridgeStatement, 6))
+            }
+            if sqlite3_column_text(bridgeStatement, 7) != nil {
+                messageData["filename"] = String(cString: sqlite3_column_text(bridgeStatement, 7))
+            }
+            if sqlite3_column_text(bridgeStatement, 8) != nil {
+                messageData["url"] = String(cString: sqlite3_column_text(bridgeStatement, 8))
+            }
+            if sqlite3_column_text(bridgeStatement, 9) != nil {
+                messageData["chat_title"] = String(cString: sqlite3_column_text(bridgeStatement, 9))
+            }
+            
+            messages.append(messageData)
+        }
+        
+        return messages
+    }
+    
     private func queryWhatsAppMessages(isFullSync: Bool, since: Date?) throws -> [[String: Any]] {
         let sinceTimestamp = since?.timeIntervalSince1970 ?? 0
         let limit = isFullSync ? 500 : 100
         
-        // WhatsApp database schema varies by version, this is a generalized approach
+        // First check if this is our Go bridge database (has 'messages' table)
+        if let result = queryBridgeMessages(sinceTimestamp: sinceTimestamp, limit: limit) {
+            return result
+        }
+        
+        // Fallback: Native WhatsApp database schema varies by version
         // Common tables: ZMESSAGE, ZCHAT, ZCONTACT, ZMEDIAITEM
         
         let query = """
@@ -210,8 +308,13 @@ class WhatsAppIngester {
     }
     
     private func processWhatsAppMessage(_ messageData: [String: Any], stats: inout IngestStats) async {
-        let documentId = UUID().uuidString
         let now = Int(Date().timeIntervalSince1970)
+        
+        // Use message ID and chat ID to ensure unique document IDs
+        let messageId = messageData["message_id"] ?? messageData["id"] ?? UUID().uuidString
+        let chatJid = (messageData["chat_jid"] as? String) ?? (messageData["chat_id"] as? String) ?? "unknown"
+        let cleanChatJid = chatJid.replacingOccurrences(of: "@", with: "_").replacingOccurrences(of: ".", with: "_")
+        let documentId = "whatsapp_\(messageId)_\(cleanChatJid)"
         
         let text = messageData["text"] as? String ?? ""
         let chatId = messageData["chat_id"] as? String ?? "unknown"
@@ -249,20 +352,32 @@ class WhatsAppIngester {
         
         let searchableContent = contentParts.joined(separator: "\n")
         
+        // Ensure all required fields are non-null  
+        let validChatTitle = chatTitle?.isEmpty == false ? chatTitle! : nil
+        let validContactName = contactName?.isEmpty == false ? contactName! : nil
+        
+        let title = if isFromMe {
+            "WhatsApp to \(validChatTitle ?? validContactName ?? chatId)"
+        } else {
+            "WhatsApp from \(validContactName ?? validChatTitle ?? chatId)"
+        }
+        
         let docData: [String: Any] = [
             "id": documentId,
             "type": "message",
-            "title": isFromMe ? "WhatsApp to \(chatTitle ?? chatId)" : "WhatsApp from \(contactName ?? chatId)",
+            "title": title,
             "content": searchableContent,
             "app_source": "WhatsApp",
-            "source_id": "\(messageData["message_id"] ?? UUID().uuidString)",
+            "source_id": documentId, // Use unique document ID as source ID 
             "source_path": "whatsapp://chat/\(chatId)",
-            "hash": "\(messageData["message_id"] ?? "")\(text)".sha256(),
+            "hash": "\(messageId)\(text)".sha256(),
             "created_at": timestamp,
             "updated_at": timestamp,
             "last_seen_at": now,
             "deleted": false
         ]
+        
+        // DEBUG removed - Database bug fixed
         
         if database.insert("documents", data: docData) {
             let messageSpecificData: [String: Any] = [
@@ -274,10 +389,7 @@ class WhatsAppIngester {
                 "is_read": true, // Assume read since we're processing it
                 "service": "WhatsApp",
                 "chat_name": chatTitle ?? NSNull(),
-                "has_attachments": messageType != 0,
-                "whatsapp_chat_id": chatId,
-                "whatsapp_message_type": messageTypeString,
-                "whatsapp_forwarded": false // Would need more complex detection
+                "has_attachments": messageType != 0
             ]
             
             if database.insert("messages", data: messageSpecificData) {
