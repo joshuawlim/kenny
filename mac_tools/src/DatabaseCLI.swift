@@ -13,7 +13,9 @@ struct DatabaseCLI: ParsableCommand {
             IngestIncremental.self,
             Search.self,
             TestQueries.self,
-            Stats.self
+            Stats.self,
+            IngestEmbeddings.self,
+            HybridSearchCommand.self
         ]
     )
 }
@@ -297,6 +299,152 @@ struct Stats: ParsableCommand {
         )
         
         _ = printJSON(stats)
+    }
+}
+
+struct IngestEmbeddings: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_embeddings",
+        abstract: "Generate embeddings for all documents"
+    )
+    
+    @Option(help: "Database path")
+    var dbPath: String?
+    
+    @Flag(help: "Force regeneration of all embeddings")
+    var force: Bool = false
+    
+    @Option(help: "Embedding model to use")
+    var model: String = "nomic-embed-text"
+    
+    @Option(help: "Batch size for processing")
+    var batchSize: Int = 10
+    
+    func run() async throws {
+        let db = Database(path: dbPath)
+        let embeddingModel = EmbeddingModel(rawValue: model) ?? .nomicEmbedText
+        let embeddingsService = EmbeddingsService(model: embeddingModel)
+        let ingester = EmbeddingIngester(
+            database: db,
+            embeddingsService: embeddingsService,
+            batchSize: batchSize
+        )
+        
+        struct Result: Codable {
+            let status: String
+            let model: String
+            let force_regenerate: Bool
+            let duration_seconds: Double
+            let documents_processed: Int
+            let chunks_created: Int
+            let embeddings_generated: Int
+        }
+        
+        let startTime = Date()
+        
+        do {
+            try await ingester.ingestAll(force: force)
+            
+            let duration = Date().timeIntervalSince(startTime)
+            let result = Result(
+                status: "completed",
+                model: model,
+                force_regenerate: force,
+                duration_seconds: duration,
+                documents_processed: 0,
+                chunks_created: 0,
+                embeddings_generated: 0
+            )
+            _ = printJSON(result)
+        } catch {
+            let result = Result(
+                status: "failed: \(error)",
+                model: model,
+                force_regenerate: force,
+                duration_seconds: Date().timeIntervalSince(startTime),
+                documents_processed: 0,
+                chunks_created: 0,
+                embeddings_generated: 0
+            )
+            _ = printJSON(result)
+        }
+    }
+}
+
+struct HybridSearchCommand: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "hybrid_search",
+        abstract: "Search using hybrid BM25 + embeddings"
+    )
+    
+    @Argument(help: "Search query")
+    var query: String
+    
+    @Option(help: "Database path")
+    var dbPath: String?
+    
+    @Option(help: "Number of results")
+    var limit: Int = 10
+    
+    @Option(help: "BM25 weight (0-1)")
+    var bm25Weight: Float = 0.5
+    
+    @Option(help: "Embedding weight (0-1)")
+    var embeddingWeight: Float = 0.5
+    
+    func run() async throws {
+        let db = Database(path: dbPath)
+        let embeddingsService = EmbeddingsService()
+        let search = HybridSearch(
+            database: db,
+            embeddingsService: embeddingsService,
+            bm25Weight: bm25Weight,
+            embeddingWeight: embeddingWeight
+        )
+        
+        struct SearchResponse: Codable {
+            let query: String
+            let results_count: Int
+            let results: [ResultItem]
+            let duration_ms: Int
+        }
+        
+        struct ResultItem: Codable {
+            let document_id: String
+            let title: String
+            let snippet: String
+            let score: Float
+            let bm25_score: Float
+            let embedding_score: Float
+            let app_source: String
+            let source_path: String?
+        }
+        
+        let startTime = Date()
+        let results = try await search.search(query: query, limit: limit)
+        let duration = Int(Date().timeIntervalSince(startTime) * 1000)
+        
+        let resultItems = results.map { result in
+            ResultItem(
+                document_id: result.documentId,
+                title: result.title,
+                snippet: result.snippet,
+                score: result.score,
+                bm25_score: result.bm25Score,
+                embedding_score: result.embeddingScore,
+                app_source: result.appSource,
+                source_path: result.sourcePath
+            )
+        }
+        
+        let response = SearchResponse(
+            query: query,
+            results_count: results.count,
+            results: resultItems,
+            duration_ms: duration
+        )
+        
+        _ = printJSON(response)
     }
 }
 

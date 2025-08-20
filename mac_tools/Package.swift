@@ -44,7 +44,10 @@ let package = Package(
                 "MessagesIngester.swift",
                 "WhatsAppIngester.swift",
                 "FilesIngester.swift",
-                "Orchestrator.swift"
+                "Orchestrator.swift",
+                "EmbeddingsService.swift",
+                "EmbeddingIngester.swift",
+                "HybridSearch.swift"
             ]
         ),
         .executableTarget(
