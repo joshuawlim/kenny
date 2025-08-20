@@ -1,0 +1,53 @@
+# Swift
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# OS X
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local databases and logs
+*.db
+*.db-shm
+*.db-wal
+*.ndjson
+
+# Test files
+test_*.db
+/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sensitive data
+chat.db
+assistant.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Application Support (contains user data)
+Library/
+
+# Logs directory
+logs/
+*.log
+
+# Temporary files
+*.tmp
+.cache/
