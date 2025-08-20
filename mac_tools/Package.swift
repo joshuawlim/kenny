@@ -9,7 +9,8 @@ let package = Package(
     products: [
         .executable(name: "mac_tools", targets: ["mac_tools"]),
         .executable(name: "db_cli", targets: ["DatabaseCLI"]),
-        .executable(name: "orchestrator_cli", targets: ["OrchestratorCLI"])
+        .executable(name: "orchestrator_cli", targets: ["OrchestratorCLI"]),
+        .executable(name: "assistant_core", targets: ["AssistantCLI"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
@@ -47,7 +48,11 @@ let package = Package(
                 "Orchestrator.swift",
                 "EmbeddingsService.swift",
                 "EmbeddingIngester.swift",
-                "HybridSearch.swift"
+                "HybridSearch.swift",
+                "AssistantCore.swift",
+                "LLMService.swift", 
+                "ToolRegistry.swift",
+                "TestAssistantCore.swift"
             ]
         ),
         .executableTarget(
@@ -58,6 +63,15 @@ let package = Package(
             ],
             path: "src",
             sources: ["OrchestratorCLI.swift"]
+        ),
+        .executableTarget(
+            name: "AssistantCLI",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                "DatabaseCore"
+            ],
+            path: "src",
+            sources: ["AssistantCLI.swift"]
         )
     ]
 )
