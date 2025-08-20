@@ -1,13 +1,13 @@
 import Foundation
 import SQLite3
 
-class EmbeddingIngester {
+public class EmbeddingIngester {
     private let database: Database
     private let embeddingsService: EmbeddingsService
     private let chunkingStrategy: ChunkingStrategy
     private let batchSize: Int
     
-    init(database: Database,
+    public init(database: Database,
          embeddingsService: EmbeddingsService = EmbeddingsService(),
          chunkingStrategy: ChunkingStrategy = ChunkingStrategy(),
          batchSize: Int = 10) {
@@ -17,7 +17,7 @@ class EmbeddingIngester {
         self.batchSize = batchSize
     }
     
-    func ingestAll(force: Bool = false) async throws {
+    public func ingestAll(force: Bool = false) async throws {
         let startTime = Date()
         var totalDocuments = 0
         var totalChunks = 0

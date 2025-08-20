@@ -6,10 +6,19 @@ import Foundation
 public class Orchestrator {
     private let database: Database
     private let toolLayer: ToolLayer
+    private let hybridSearch: HybridSearch?
     
-    public init(database: Database) {
+    public init(database: Database, enableHybridSearch: Bool = true) {
         self.database = database
         self.toolLayer = ToolLayer()
+        
+        // Initialize hybrid search if enabled
+        if enableHybridSearch {
+            let embeddingsService = EmbeddingsService()
+            self.hybridSearch = HybridSearch(database: database, embeddingsService: embeddingsService)
+        } else {
+            self.hybridSearch = nil
+        }
     }
     
     /// Process a user request and return a structured response
@@ -58,15 +67,32 @@ public class Orchestrator {
         
         let limit = request.parameters["limit"] as? Int ?? 20
         let types = request.parameters["types"] as? [String] ?? []
+        let useHybrid = request.parameters["hybrid"] as? Bool ?? true
         
-        // Perform multi-domain search
+        // Use hybrid search if available and requested
+        if useHybrid, let hybridSearch = self.hybridSearch {
+            do {
+                let hybridResults = try await hybridSearch.search(query: query, limit: limit)
+                return UserResponse(
+                    type: .searchResults,
+                    success: true,
+                    data: ["results": hybridResults.map { $0.toDictionary() }, "search_type": "hybrid"],
+                    message: "Found \(hybridResults.count) results for '\(query)' using hybrid search"
+                )
+            } catch {
+                print("Hybrid search failed, falling back to BM25: \(error)")
+                // Fall through to BM25 search
+            }
+        }
+        
+        // Perform traditional multi-domain BM25 search as fallback
         let results = database.searchMultiDomain(query, types: types, limit: limit)
         
         return UserResponse(
             type: .searchResults,
             success: true,
-            data: ["results": results.map { $0.toDictionary() }],
-            message: "Found \(results.count) results for '\(query)'"
+            data: ["results": results.map { $0.toDictionary() }, "search_type": "bm25"],
+            message: "Found \(results.count) results for '\(query)' using BM25 search"
         )
     }
     

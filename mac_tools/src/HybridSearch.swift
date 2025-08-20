@@ -1,27 +1,43 @@
 import Foundation
 import SQLite3
 
-struct HybridSearchResult {
-    let documentId: String
-    let chunkId: String
-    let title: String
-    let content: String
-    let snippet: String
-    let score: Float
-    let bm25Score: Float
-    let embeddingScore: Float
-    let sourcePath: String?
-    let appSource: String
-    let metadata: [String: Any]
+public struct HybridSearchResult {
+    public let documentId: String
+    public let chunkId: String
+    public let title: String
+    public let content: String
+    public let snippet: String
+    public let score: Float
+    public let bm25Score: Float
+    public let embeddingScore: Float
+    public let sourcePath: String?
+    public let appSource: String
+    public let metadata: [String: Any]
+    
+    public func toDictionary() -> [String: Any] {
+        return [
+            "document_id": documentId,
+            "chunk_id": chunkId,
+            "title": title,
+            "content": content,
+            "snippet": snippet,
+            "score": score,
+            "bm25_score": bm25Score,
+            "embedding_score": embeddingScore,
+            "source_path": sourcePath as Any,
+            "app_source": appSource,
+            "metadata": metadata
+        ]
+    }
 }
 
-class HybridSearch {
+public class HybridSearch {
     private let database: Database
     private let embeddingsService: EmbeddingsService
     private let bm25Weight: Float
     private let embeddingWeight: Float
     
-    init(database: Database, 
+    public init(database: Database, 
          embeddingsService: EmbeddingsService,
          bm25Weight: Float = 0.5,
          embeddingWeight: Float = 0.5) {
@@ -31,7 +47,7 @@ class HybridSearch {
         self.embeddingWeight = embeddingWeight
     }
     
-    func search(query: String, limit: Int = 10) async throws -> [HybridSearchResult] {
+    public func search(query: String, limit: Int = 10) async throws -> [HybridSearchResult] {
         let queryEmbedding = try await embeddingsService.generateEmbedding(for: query)
         
         let bm25Results = try searchBM25(query: query, limit: limit * 2)
@@ -49,6 +65,7 @@ class HybridSearch {
     }
     
     private func searchBM25(query: String, limit: Int) throws -> [(String, Float, String)] {
+        // Use document-level search with corrected BM25 scoring
         let sql = """
             SELECT 
                 d.id,
@@ -69,7 +86,9 @@ class HybridSearch {
                   let score = row["score"] as? Double else {
                 return nil
             }
-            return (id, Float(abs(score)), snippet)
+            // BM25 scores from FTS5 are negative (lower is better)
+            // Convert to positive scores where higher is better
+            return (id, Float(-score), snippet)
         }
     }
     
@@ -87,8 +106,9 @@ class HybridSearch {
     ) -> [HybridSearchResult] {
         var combinedScores: [String: (bm25: Float, embedding: Float, snippet: String)] = [:]
         
-        let maxBM25 = bm25Results.first?.1 ?? 1.0
-        let maxEmbedding = embeddingResults.first?.1 ?? 1.0
+        // Find max scores for normalization (since results are sorted by score desc)
+        let maxBM25 = bm25Results.max { $0.1 < $1.1 }?.1 ?? 1.0
+        let maxEmbedding = embeddingResults.max { $0.1 < $1.1 }?.1 ?? 1.0
         
         for (docId, score, snippet) in bm25Results {
             let normalizedScore = maxBM25 > 0 ? score / maxBM25 : 0

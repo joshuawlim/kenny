@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-enum EmbeddingModel: String {
+public enum EmbeddingModel: String {
     case nomicEmbedText = "nomic-embed-text"
     
     var dimensions: Int {
@@ -12,7 +12,7 @@ enum EmbeddingModel: String {
     }
 }
 
-struct EmbeddingChunk {
+public struct EmbeddingChunk {
     let id: String
     let documentId: String
     let text: String
@@ -22,27 +22,71 @@ struct EmbeddingChunk {
     let metadata: [String: Any]
 }
 
-struct EmbeddingVector {
+public struct EmbeddingVector {
     let chunkId: String
     let vector: [Float]
     let model: EmbeddingModel
     let createdAt: Date
 }
 
-class EmbeddingsService {
+public class EmbeddingsService {
     let model: EmbeddingModel
     private let ollamaBaseURL: String
+    private let timeoutInterval: TimeInterval
+    private let maxRetries: Int
+    private let retryDelay: TimeInterval
     
-    init(model: EmbeddingModel = .nomicEmbedText, ollamaBaseURL: String = "http://localhost:11434") {
+    public init(model: EmbeddingModel = .nomicEmbedText, 
+                ollamaBaseURL: String = "http://localhost:11434",
+                timeoutInterval: TimeInterval = 30.0,
+                maxRetries: Int = 3,
+                retryDelay: TimeInterval = 1.0) {
         self.model = model
         self.ollamaBaseURL = ollamaBaseURL
+        self.timeoutInterval = timeoutInterval
+        self.maxRetries = maxRetries
+        self.retryDelay = retryDelay
     }
     
-    func generateEmbedding(for text: String) async throws -> [Float] {
+    public func generateEmbedding(for text: String) async throws -> [Float] {
+        var lastError: Error?
+        
+        for attempt in 1...maxRetries {
+            do {
+                let result = try await performEmbeddingRequest(text: text)
+                return result
+            } catch {
+                lastError = error
+                
+                // Don't retry for certain types of errors
+                if let embeddingError = error as? EmbeddingError {
+                    switch embeddingError {
+                    case .invalidResponse, .invalidModel, .chunkingError:
+                        throw error // Don't retry these
+                    case .apiError, .networkError:
+                        break // Continue with retry
+                    }
+                }
+                
+                print("Embedding request failed (attempt \(attempt)/\(maxRetries)): \(error)")
+                
+                if attempt < maxRetries {
+                    let delaySeconds = retryDelay * Double(attempt) // Exponential backoff
+                    print("Retrying in \(delaySeconds) seconds...")
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                }
+            }
+        }
+        
+        throw lastError ?? EmbeddingError.networkError("Max retries exceeded")
+    }
+    
+    private func performEmbeddingRequest(text: String) async throws -> [Float] {
         let url = URL(string: "\(ollamaBaseURL)/api/embeddings")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = timeoutInterval
         
         let payload: [String: Any] = [
             "model": model.rawValue,
@@ -53,9 +97,17 @@ class EmbeddingsService {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw EmbeddingError.apiError("Failed to generate embedding")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EmbeddingError.networkError("Invalid response type")
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            let errorMessage = "HTTP \(httpResponse.statusCode)"
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorData["error"] as? String {
+                throw EmbeddingError.apiError("\(errorMessage): \(error)")
+            }
+            throw EmbeddingError.apiError(errorMessage)
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -99,18 +151,20 @@ enum EmbeddingError: Error {
     case apiError(String)
     case invalidResponse
     case chunkingError(String)
+    case networkError(String)
+    case invalidModel(String)
 }
 
-class ChunkingStrategy {
+public class ChunkingStrategy {
     let maxChunkSize: Int
     let overlap: Int
     
-    init(maxChunkSize: Int = 512, overlap: Int = 50) {
+    public init(maxChunkSize: Int = 512, overlap: Int = 50) {
         self.maxChunkSize = maxChunkSize
         self.overlap = overlap
     }
     
-    func chunkEmail(_ content: String, documentId: String) -> [EmbeddingChunk] {
+    public func chunkEmail(_ content: String, documentId: String) -> [EmbeddingChunk] {
         var chunks: [EmbeddingChunk] = []
         
         let components = content.components(separatedBy: "\n\n")
@@ -153,7 +207,7 @@ class ChunkingStrategy {
         return chunks
     }
     
-    func chunkEvent(_ content: String, documentId: String) -> [EmbeddingChunk] {
+    public func chunkEvent(_ content: String, documentId: String) -> [EmbeddingChunk] {
         return [EmbeddingChunk(
             id: "\(documentId)_chunk_0",
             documentId: documentId,
@@ -165,7 +219,7 @@ class ChunkingStrategy {
         )]
     }
     
-    func chunkDocument(_ content: String, documentId: String) -> [EmbeddingChunk] {
+    public func chunkDocument(_ content: String, documentId: String) -> [EmbeddingChunk] {
         var chunks: [EmbeddingChunk] = []
         let paragraphs = content.components(separatedBy: "\n\n")
         var currentText = ""
@@ -207,7 +261,7 @@ class ChunkingStrategy {
         return chunks
     }
     
-    func chunkNote(_ content: String, documentId: String) -> [EmbeddingChunk] {
+    public func chunkNote(_ content: String, documentId: String) -> [EmbeddingChunk] {
         if content.count <= maxChunkSize {
             return [EmbeddingChunk(
                 id: "\(documentId)_chunk_0",
@@ -223,7 +277,7 @@ class ChunkingStrategy {
         return chunkDocument(content, documentId: documentId)
     }
     
-    func chunkMessage(_ content: String, documentId: String) -> [EmbeddingChunk] {
+    public func chunkMessage(_ content: String, documentId: String) -> [EmbeddingChunk] {
         return [EmbeddingChunk(
             id: "\(documentId)_chunk_0",
             documentId: documentId,

@@ -2,17 +2,17 @@ import Foundation
 import EventKit
 import Contacts
 
-class IngestManager {
+public class IngestManager {
     private let database: Database
     private let eventStore = EKEventStore()
     private let contactStore = CNContactStore()
     
-    init(database: Database) {
+    public init(database: Database) {
         self.database = database
     }
     
     // MARK: - Full Ingest (Initial Sync)
-    func runFullIngest() async throws {
+    public func runFullIngest() async throws {
         let startTime = Date()
         print("Starting full ingest...")
         
@@ -50,7 +50,7 @@ class IngestManager {
     }
     
     // MARK: - Incremental Ingest (Delta Updates)
-    func runIncrementalIngest() async throws {
+    public func runIncrementalIngest() async throws {
         let startTime = Date()
         print("Starting incremental ingest...")
         

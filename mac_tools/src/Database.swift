@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 public class Database {
-    private var db: OpaquePointer?
+    internal var db: OpaquePointer?
     private let dbPath: String
     
     public init(path: String? = nil) {
@@ -180,13 +180,25 @@ public class Database {
     
     // Migration system
     private func runMigrations() {
-        // TEMPORARY: Skip migration system and create basic schema directly
         createSchemaMigrationsTable()
         
         let currentVersion = getCurrentSchemaVersion()
-        if currentVersion == 0 {
-            // Create basic schema directly for now
-            let basicSchema = """
+        print("Current schema version: \(currentVersion)")
+        
+        // Run migrations up to version 3 (includes embeddings)
+        let targetVersion = 3
+        
+        if currentVersion < targetVersion {
+            for version in (currentVersion + 1)...targetVersion {
+                let migrationFile = String(format: "%03d_", version)
+                if let migration = loadMigration(startingWith: migrationFile) {
+                    print("Applying migration version \(version)...")
+                    execute(migration)
+                    updateSchemaVersion(version)
+                } else if currentVersion == 0 && version == 1 {
+                    // Fallback: Create basic schema for version 1
+                    print("Using fallback schema for version 1...")
+                    let basicSchema = """
             CREATE TABLE IF NOT EXISTS documents (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -289,13 +301,19 @@ public class Database {
             END;
             """
             
-            if execute(basicSchema) {
-                updateSchemaVersion(1)
-                print("Basic schema created successfully")
-            } else {
-                fatalError("Failed to create basic schema")
+                    if execute(basicSchema) {
+                        updateSchemaVersion(1)
+                        print("Basic schema created successfully")
+                    } else {
+                        fatalError("Failed to create basic schema")
+                    }
+                } else {
+                    print("Warning: Could not find migration for version \(version)")
+                }
             }
         }
+        
+        print("Schema migration complete. Current version: \(getCurrentSchemaVersion())")
     }
     
     private func createSchemaMigrationsTable() {
@@ -343,6 +361,21 @@ public class Database {
             return Int(filename[versionRange]) ?? 0
         }
         return 0
+    }
+    
+    private func loadMigration(startingWith prefix: String) -> String? {
+        let migrationsPath = getProjectRoot() + "/migrations"
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: migrationsPath) else {
+            print("Could not read migrations directory: \(migrationsPath)")
+            return nil
+        }
+        
+        // Find file starting with the prefix (e.g., "003_")
+        if let filename = files.first(where: { $0.hasPrefix(prefix) && $0.hasSuffix(".sql") }) {
+            return try? String(contentsOfFile: migrationsPath + "/" + filename)
+        }
+        
+        return nil
     }
     
     private func loadMigrationSQL(_ filename: String) -> String? {
