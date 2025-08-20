@@ -51,7 +51,7 @@ List calendar events within a date range:
 ./mac_tools calendar_list
 
 # List events for specific date range
-./mac_tools calendar_list --from=2024-01-01 --to=2024-01-31
+./mac_tools calendar_list --from=$(date -u +"%Y-%m-%dT%H:%M:%SZ") --to=$(date -u -v+7d +"%Y-%m-%dT%H:%M:%SZ")
 
 # Filter by specific calendars
 ./mac_tools calendar_list --calendars='["Work","Personal"]'
@@ -87,7 +87,7 @@ List mail message headers (no message bodies):
 ./mac_tools mail_list_headers --limit=10
 
 # Filter by account and date
-./mac_tools mail_list_headers --account="Work" --since=2024-01-01 --limit=50
+./mac_tools mail_list_headers --account="Work" --since=$(date -u -v-7d +"%Y-%m-%dT%H:%M:%SZ") --limit=50
 ```
 
 **Output Example:**
@@ -115,10 +115,10 @@ Create reminders with dry-run/confirm pattern:
 
 ```bash
 # Step 1: Dry run to see what would be created
-./mac_tools reminders_create --title="Buy groceries" --due="2024-01-20T18:00:00Z" --dry-run
+./mac_tools reminders_create --title="Buy groceries" --due=$(date -u -v+3d +"%Y-%m-%dT18:00:00Z") --dry-run
 
 # Step 2: Confirm with the plan hash from dry run
-./mac_tools reminders_create --title="Buy groceries" --due="2024-01-20T18:00:00Z" --confirm --plan-hash="abc123..."
+./mac_tools reminders_create --title="Buy groceries" --due=$(date -u -v+3d +"%Y-%m-%dT18:00:00Z") --confirm --plan-hash="abc123..."
 ```
 
 **Dry Run Output:**
@@ -129,7 +129,7 @@ Create reminders with dry-run/confirm pattern:
   "intent": "create_reminder",
   "args": {
     "title": "Buy groceries",
-    "due": "2024-01-20T18:00:00Z"
+    "due": "$(date -u -v+3d +\"%Y-%m-%dT18:00:00Z\")"
   }
 }
 ```
@@ -142,7 +142,7 @@ Create reminders with dry-run/confirm pattern:
   "reminder": {
     "id": "reminder-456",
     "title": "Buy groceries",
-    "due": "2024-01-20T18:00:00Z",
+    "due": "$(date -u -v+3d +\"%Y-%m-%dT18:00:00Z\")",
     "list": "Reminders",
     "created_at": "2024-01-15T16:45:00Z"
   }
@@ -223,7 +223,7 @@ All operations are logged to NDJSON format with performance metrics:
 ```json
 {
   "tool": "calendar_list",
-  "args": {"from": "2024-01-01", "to": "2024-01-31"},
+  "args": {"from": "$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")", "to": "$(date -u -v+31d +\"%Y-%m-%dT%H:%M:%SZ\")"},
   "result": {"events": [...]},
   "error": null,
   "start_ts": "2024-01-15T10:00:00.123Z",

@@ -384,27 +384,35 @@ public class Database {
     }
     
     private func getProjectRoot() -> String {
-        // In a real app, this would be the app bundle or a known path
-        // For now, try to find the project directory containing migrations
+        // Check for ENV variable first
+        if let envPath = ProcessInfo.processInfo.environment["KENNY_PROJECT_ROOT"] {
+            if FileManager.default.fileExists(atPath: envPath + "/migrations") {
+                return envPath
+            }
+        }
+        
         let currentPath = FileManager.default.currentDirectoryPath
         print("Current directory: \(currentPath)")
         
-        // Try current directory first
-        let migrationsPath1 = currentPath + "/migrations"
-        if FileManager.default.fileExists(atPath: migrationsPath1) {
-            return currentPath
-        }
-        
-        // Try mac_tools subdirectory
-        let migrationsPath2 = currentPath + "/mac_tools/migrations"  
-        if FileManager.default.fileExists(atPath: migrationsPath2) {
-            return currentPath + "/mac_tools"
-        }
-        
-        // Fallback to hardcoded path
-        let fallbackPath = "/Users/joshwlim/Documents/Kenny/mac_tools"
-        if FileManager.default.fileExists(atPath: fallbackPath + "/migrations") {
-            return fallbackPath
+        // Search upward for migrations directory
+        var searchPath = currentPath
+        for _ in 0..<5 { // Limit search depth
+            let candidatePaths = [
+                searchPath + "/migrations",
+                searchPath + "/mac_tools/migrations"
+            ]
+            
+            for candidatePath in candidatePaths {
+                if FileManager.default.fileExists(atPath: candidatePath) {
+                    return candidatePath.hasSuffix("/mac_tools/migrations") ? 
+                           searchPath + "/mac_tools" : searchPath
+                }
+            }
+            
+            // Move up one directory
+            let parentPath = (searchPath as NSString).deletingLastPathComponent
+            if parentPath == searchPath { break } // Reached root
+            searchPath = parentPath
         }
         
         print("Could not find migrations directory, using current: \(currentPath)")
@@ -505,6 +513,82 @@ extension Database {
             "files": fileCount,
             "database_path": dbPath
         ]
+    }
+    
+    // MARK: - Embedding Search Support
+    
+    /// Search for similar documents using cosine similarity with embeddings
+    public func searchEmbeddings(queryVector: [Float], limit: Int = 20) -> [(String, Float, String)] {
+        let sql = """
+            SELECT d.id, d.title, d.content, e.embedding_vector
+            FROM documents d
+            JOIN embeddings e ON d.id = e.document_id
+            WHERE e.embedding_vector IS NOT NULL
+            ORDER BY d.created_at DESC
+            LIMIT 1000
+        """
+        
+        var stmt: OpaquePointer?
+        var results: [(String, Float, String)] = []
+        
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                guard let idPtr = sqlite3_column_text(stmt, 0),
+                      let titlePtr = sqlite3_column_text(stmt, 1),
+                      let contentPtr = sqlite3_column_text(stmt, 2) else {
+                    continue
+                }
+                
+                let id = String(cString: idPtr)
+                let title = String(cString: titlePtr)  
+                let content = String(cString: contentPtr)
+                
+                // Extract embedding vector from BLOB
+                let blobBytes = sqlite3_column_bytes(stmt, 3)
+                if let blobPtr = sqlite3_column_blob(stmt, 3), blobBytes > 0 {
+                    let data = Data(bytes: blobPtr, count: Int(blobBytes))
+                    if let vector = deserializeFloatArray(from: data) {
+                        let similarity = cosineSimilarity(queryVector, vector)
+                        if similarity > 0.1 { // Threshold for relevance
+                            let snippet = String(content.prefix(200))
+                            results.append((id, similarity, snippet))
+                        }
+                    }
+                }
+            }
+        }
+        
+        sqlite3_finalize(stmt)
+        
+        // Sort by similarity (descending) and limit
+        return Array(results.sorted { $0.1 > $1.1 }.prefix(limit))
+    }
+    
+    /// Serialize float array to Data for BLOB storage
+    public func serializeFloatArray(_ array: [Float]) -> Data {
+        return array.withUnsafeBytes { Data($0) }
+    }
+    
+    /// Deserialize Data back to float array
+    public func deserializeFloatArray(from data: Data) -> [Float]? {
+        guard data.count % MemoryLayout<Float>.size == 0 else { return nil }
+        let count = data.count / MemoryLayout<Float>.size
+        return data.withUnsafeBytes { bytes in
+            Array(bytes.bindMemory(to: Float.self).prefix(count))
+        }
+    }
+    
+    /// Calculate cosine similarity between two vectors
+    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
+        guard a.count == b.count else { return 0.0 }
+        
+        let dotProduct = zip(a, b).map(*).reduce(0, +)
+        let magnitudeA = sqrt(a.map { $0 * $0 }.reduce(0, +))
+        let magnitudeB = sqrt(b.map { $0 * $0 }.reduce(0, +))
+        
+        guard magnitudeA > 0 && magnitudeB > 0 else { return 0.0 }
+        
+        return dotProduct / (magnitudeA * magnitudeB)
     }
 }
 

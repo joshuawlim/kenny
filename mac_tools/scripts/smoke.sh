@@ -70,7 +70,9 @@ run_smoke_tests() {
     run_test "TCC request dry run" "$BINARY tcc_request --calendar --reminders" || ((failed++))
     
     # Test 3: Calendar list (may fail due to permissions, but should return JSON error)
-    run_test "Calendar list" "$BINARY calendar_list --from=2024-01-01 --to=2024-01-31" 1 || ((failed++))
+    TODAY=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    TOMORROW=$(date -u -v+1d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d "tomorrow" +"%Y-%m-%dT%H:%M:%SZ")
+    run_test "Calendar list" "$BINARY calendar_list --from=$TODAY --to=$TOMORROW" 1 || ((failed++))
     
     # Test 4: Mail headers (may fail due to permissions, but should return JSON error)
     run_test "Mail headers" "$BINARY mail_list_headers --limit=5" 1 || ((failed++))

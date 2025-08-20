@@ -305,10 +305,34 @@ public enum ResponseType: String {
 
 /// Simple tool layer that wraps the existing mac_tools CLI
 private class ToolLayer {
-    func executeTool(_ toolName: String, parameters: [String: Any], dryRun: Bool) async throws -> ToolResult {
-        // For now, this is a simple wrapper around the CLI tools
-        // In the future, this would be more sophisticated with direct Swift integration
+    private let macToolsPath: String
+    
+    init() {
+        self.macToolsPath = Self.findMacToolsPath()
+    }
+    
+    private static func findMacToolsPath() -> String {
+        // Priority order: ENV var, .build/release, /usr/local/bin, PATH lookup
+        if let envPath = ProcessInfo.processInfo.environment["MAC_TOOLS_PATH"] {
+            return envPath
+        }
         
+        let candidates = [
+            "./.build/release/mac_tools",
+            "../.build/release/mac_tools",
+            "/usr/local/bin/mac_tools"
+        ]
+        
+        for candidate in candidates {
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        
+        return "mac_tools" // Fallback to PATH
+    }
+    
+    func executeTool(_ toolName: String, parameters: [String: Any], dryRun: Bool) async throws -> ToolResult {
         let command = buildToolCommand(toolName, parameters: parameters, dryRun: dryRun)
         let result = try await executeShellCommand(command)
         
@@ -320,7 +344,7 @@ private class ToolLayer {
     }
     
     private func buildToolCommand(_ toolName: String, parameters: [String: Any], dryRun: Bool) -> String {
-        var args: [String] = ["mac_tools", toolName]
+        var args: [String] = [macToolsPath, toolName]
         
         if dryRun {
             args.append("--dry-run")
@@ -336,14 +360,48 @@ private class ToolLayer {
     }
     
     private func executeShellCommand(_ command: String) async throws -> ToolResult {
-        // Simple shell command execution
-        // In production, would use proper Process API
+        let components = command.split(separator: " ").map(String.init)
+        guard !components.isEmpty else {
+            throw OrchestratorError.toolExecutionFailed("Empty command")
+        }
         
-        return ToolResult(
-            success: true,
-            data: ["command": command],
-            message: "Tool execution placeholder"
-        )
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = Array(components)
+        
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            
+            let outputString = String(data: outputData, encoding: .utf8) ?? ""
+            let errorString = String(data: errorData, encoding: .utf8) ?? ""
+            
+            let success = process.terminationStatus == 0
+            
+            // Try to parse JSON output from tool
+            var responseData: [String: Any] = ["raw_output": outputString]
+            if let jsonData = outputString.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                responseData = parsed
+            }
+            
+            return ToolResult(
+                success: success,
+                data: responseData,
+                message: success ? "Tool executed successfully" : "Tool execution failed: \(errorString)"
+            )
+            
+        } catch {
+            throw OrchestratorError.toolExecutionFailed("Process execution failed: \(error)")
+        }
     }
 }
 

@@ -4,7 +4,7 @@ import DatabaseCore
 
 /// Week 4 Assistant Core CLI - Intelligent function calling with local LLM
 @main
-struct AssistantCLI: ParsableCommand {
+struct AssistantCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "assistant_core",
         abstract: "Week 4 Assistant Core: Intelligent function calling with local LLM",
@@ -17,7 +17,7 @@ struct AssistantCLI: ParsableCommand {
     )
 }
 
-struct ProcessQuery: ParsableCommand {
+struct ProcessQuery: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "process",
         abstract: "Process a user query using intelligent tool selection"
@@ -32,14 +32,19 @@ struct ProcessQuery: ParsableCommand {
     @Option(help: "Maximum retry attempts")
     var maxRetries: Int = 3
     
+    @Flag(help: "Enable verbose output (default is JSON-only)")
+    var verbose: Bool = false
+    
     func run() async throws {
-        print("🚀 Kenny Assistant Core (Week 4)")
-        print("Query: '\(query)'")
-        print("Database: \(dbPath)")
-        print("---")
+        if verbose {
+            print("🚀 Kenny Assistant Core (Week 4)")
+            print("Query: '\(query)'")
+            print("Database: \(dbPath)")
+            print("---")
+        }
         
         let database = Database(path: dbPath)
-        let assistantCore = AssistantCore(database: database, maxRetries: maxRetries)
+        let assistantCore = AssistantCore(database: database, maxRetries: maxRetries, verbose: verbose)
         
         do {
             let response = try await assistantCore.processQuery(query)
@@ -68,7 +73,7 @@ struct ProcessQuery: ParsableCommand {
     }
 }
 
-struct TestSuite: ParsableCommand {
+struct TestSuite: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "test",
         abstract: "Run 10 deterministic test cases using live data"
@@ -139,7 +144,7 @@ struct TestSuite: ParsableCommand {
     }
 }
 
-struct TestDeterministic: ParsableCommand {
+struct TestDeterministic: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "test-deterministic", 
         abstract: "Run 10 deterministic test cases proving Week 4 capabilities"
@@ -177,7 +182,7 @@ struct TestDeterministic: ParsableCommand {
     }
 }
 
-struct CheckLLM: ParsableCommand {
+struct CheckLLM: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "check-llm", 
         abstract: "Check LLM availability and setup"

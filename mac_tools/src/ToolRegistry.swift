@@ -3,12 +3,36 @@ import Foundation
 /// Tool Registry: JSON schema validation and tool execution interface
 /// Maps to existing mac_tools CLI commands with live data integration
 public class ToolRegistry {
-    private let tools: [String: ToolDefinition]
+    private var tools: [String: ToolDefinition]
     private let macToolsPath: String
     
-    public init(macToolsPath: String = "/usr/local/bin/mac_tools") {
-        self.macToolsPath = macToolsPath
-        self.tools = Self.buildToolDefinitions()
+    public init(macToolsPath: String? = nil) {
+        self.macToolsPath = macToolsPath ?? Self.findMacToolsPath()
+        self.tools = [:]
+        self.tools = self.buildToolDefinitions()
+    }
+    
+    private static func findMacToolsPath() -> String {
+        // Priority order: ENV var, /usr/local/bin, .build/release, PATH lookup
+        if let envPath = ProcessInfo.processInfo.environment["MAC_TOOLS_PATH"] {
+            return envPath
+        }
+        
+        let candidates = [
+            "/usr/local/bin/mac_tools",
+            "./.build/release/mac_tools",
+            "../.build/release/mac_tools",
+            "../../.build/release/mac_tools"
+        ]
+        
+        for candidate in candidates {
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        
+        // Fallback to PATH lookup
+        return "mac_tools"
     }
     
     public func getAvailableTools() -> [ToolDefinition] {
@@ -21,7 +45,7 @@ public class ToolRegistry {
     
     // MARK: - Tool Definitions with JSON Schemas
     
-    private static func buildToolDefinitions() -> [String: ToolDefinition] {
+    private func buildToolDefinitions() -> [String: ToolDefinition] {
         return [
             "search_data": ToolDefinition(
                 name: "search_data",
@@ -31,9 +55,10 @@ public class ToolRegistry {
                     "limit": ParameterSchema(type: .integer, required: false, description: "Max results (default 10)"),
                     "hybrid": ParameterSchema(type: .boolean, required: false, description: "Use hybrid search (default true)")
                 ],
-                execute: { args in
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("search_data", "Tool registry not available") }
                     // This integrates with Week 1-3 database + hybrid search
-                    return try await Self.executeSearch(args)
+                    return try await self.executeSearch(args)
                 }
             ),
             
@@ -44,8 +69,9 @@ public class ToolRegistry {
                     "since": ParameterSchema(type: .string, required: false, description: "ISO8601 date filter"),
                     "limit": ParameterSchema(type: .integer, required: false, description: "Max emails (default 50)")
                 ],
-                execute: { args in
-                    return try await Self.executeMacTool("mail_list_headers", args)
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("mail_list_headers", "Tool registry not available") }
+                    return try await self.executeMacTool("mail_list_headers", args)
                 }
             ),
             
@@ -56,8 +82,9 @@ public class ToolRegistry {
                     "from": ParameterSchema(type: .string, required: true, description: "Start date (ISO8601)"),
                     "to": ParameterSchema(type: .string, required: true, description: "End date (ISO8601)")
                 ],
-                execute: { args in
-                    return try await Self.executeMacTool("calendar_list", args)
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("calendar_list", "Tool registry not available") }
+                    return try await self.executeMacTool("calendar_list", args)
                 }
             ),
             
@@ -69,8 +96,9 @@ public class ToolRegistry {
                     "due": ParameterSchema(type: .string, required: false, description: "Due date (ISO8601)"),
                     "notes": ParameterSchema(type: .string, required: false, description: "Additional notes")
                 ],
-                execute: { args in
-                    return try await Self.executeMacTool("reminders_create", args)
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("reminders_create", "Tool registry not available") }
+                    return try await self.executeMacTool("reminders_create", args)
                 }
             ),
             
@@ -81,8 +109,9 @@ public class ToolRegistry {
                     "note_id": ParameterSchema(type: .string, required: true, description: "Note identifier"),
                     "text": ParameterSchema(type: .string, required: true, description: "Text to append")
                 ],
-                execute: { args in
-                    return try await Self.executeMacTool("notes_append", args)
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("notes_append", "Tool registry not available") }
+                    return try await self.executeMacTool("notes_append", args)
                 }
             ),
             
@@ -93,8 +122,9 @@ public class ToolRegistry {
                     "src": ParameterSchema(type: .string, required: true, description: "Source file path"),
                     "dst": ParameterSchema(type: .string, required: true, description: "Destination file path")
                 ],
-                execute: { args in
-                    return try await Self.executeMacTool("files_move", args)
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("files_move", "Tool registry not available") }
+                    return try await self.executeMacTool("files_move", args)
                 }
             ),
             
@@ -116,7 +146,7 @@ public class ToolRegistry {
     
     // MARK: - Execution Methods
     
-    private static func executeSearch(_ arguments: [String: Any]) async throws -> [String: Any] {
+    private func executeSearch(_ arguments: [String: Any]) async throws -> [String: Any] {
         // Integrate with existing Orchestrator + HybridSearch (Week 3)
         let query = arguments["query"] as? String ?? ""
         let limit = arguments["limit"] as? Int ?? 10
@@ -133,13 +163,14 @@ public class ToolRegistry {
             
             do {
                 let results = try await hybridSearch.search(query: query, limit: limit)
+                let hasEmbeddingResults = results.contains { $0.embeddingScore > 0.0 }
                 return [
                     "results": results.map { $0.toDictionary() },
-                    "search_type": "hybrid",
+                    "search_type": hasEmbeddingResults ? "hybrid" : "bm25_only",
                     "count": results.count
                 ]
             } catch {
-                print("Hybrid search failed, falling back to BM25: \(error)")
+                // Silently fall back to BM25 (could add verbose flag later)
                 // Fall through to BM25
             }
         }
@@ -153,7 +184,7 @@ public class ToolRegistry {
         ]
     }
     
-    private static func executeMacTool(_ toolName: String, _ arguments: [String: Any]) async throws -> [String: Any] {
+    private func executeMacTool(_ toolName: String, _ arguments: [String: Any]) async throws -> [String: Any] {
         // Execute the existing mac_tools CLI with JSON I/O
         var args = ["mac_tools", toolName]
         
@@ -164,7 +195,7 @@ public class ToolRegistry {
         }
         
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/local/bin/mac_tools")
+        process.executableURL = URL(fileURLWithPath: self.macToolsPath)
         process.arguments = Array(args.dropFirst()) // Remove "mac_tools" from args
         
         let pipe = Pipe()

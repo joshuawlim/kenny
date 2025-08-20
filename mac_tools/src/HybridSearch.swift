@@ -93,10 +93,8 @@ public class HybridSearch {
     }
     
     private func searchEmbeddings(queryVector: [Float], limit: Int) throws -> [(String, Float, String)] {
-        // For now, return empty results since we need direct database access for blob operations
-        // This would need a specialized method in Database class to handle BLOB data
-        print("Warning: Embedding search not yet implemented - requires BLOB support")
-        return []
+        // Use the new database embedding search method
+        return database.searchEmbeddings(queryVector: queryVector, limit: limit)
     }
     
     private func combineResults(

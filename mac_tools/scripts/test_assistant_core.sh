@@ -5,7 +5,7 @@
 echo "🧪 Testing Week 4 Assistant Core Capabilities"
 echo "============================================="
 
-cd "$(dirname "$0")/../mac_tools"
+cd "$(dirname "$0")/.."
 
 echo ""
 echo "1️⃣  Testing tool selection (current time - deterministic)"
