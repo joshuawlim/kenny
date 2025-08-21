@@ -89,7 +89,7 @@ public class Database {
         for (index, param) in parameters.enumerated() {
             let bindIndex = Int32(index + 1)
                 if let stringParam = param as? String {
-                sqlite3_bind_text(statement, bindIndex, stringParam, -1, nil)
+                sqlite3_bind_text(statement, bindIndex, stringParam, Int32(stringParam.utf8.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             } else if let intParam = param as? Int {
                 sqlite3_bind_int64(statement, bindIndex, Int64(intParam))
             } else if let doubleParam = param as? Double {
@@ -162,7 +162,8 @@ public class Database {
             let bindIndex = Int32(index + 1)
             
             if let stringVal = value as? String {
-                sqlite3_bind_text(statement, bindIndex, stringVal, -1, nil)
+                // Use SQLITE_TRANSIENT to force SQLite to make its own copy of the string
+                sqlite3_bind_text(statement, bindIndex, stringVal, Int32(stringVal.utf8.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
             } else if let intVal = value as? Int {
                 sqlite3_bind_int64(statement, bindIndex, Int64(intVal))
             } else if let doubleVal = value as? Double {
