@@ -74,9 +74,9 @@ sudo cp .build/release/orchestrator_cli /usr/local/bin/
 mac_tools version
 mac_tools tcc_request --calendar --contacts
 
-# Test individual app integrations
-mac_tools calendar_list --from "2024-01-01T00:00:00Z" --to "2024-01-31T00:00:00Z"
+# Test individual app integrations (note: calendar_list is placeholder, use database search)
 mac_tools reminders_create --title "Test reminder" --dry-run
+mac_tools tcc_request --calendar --reminders  # Request permissions first
 ```
 
 #### 2. Database & Ingestion Testing
@@ -84,12 +84,16 @@ mac_tools reminders_create --title "Test reminder" --dry-run
 # Set up database and permissions
 ./scripts/setup_database.sh
 
-# Run full data ingestion (requires app permissions)
+# Request app permissions (you'll see system prompts)
+mac_tools tcc_request --calendar --contacts --reminders
+
+# Run full data ingestion (after granting permissions)
 db_cli ingest_full
 
-# Test search capabilities
-db_cli search "project meeting"
-db_cli stats
+# Test search capabilities for your actual calendar events
+db_cli search "appointment"  # Search for your calendar events
+db_cli search "january 2025"  # Search by date
+db_cli stats  # Check what data was ingested
 ```
 
 #### 3. Embeddings & Hybrid Search Testing
