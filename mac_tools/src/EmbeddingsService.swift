@@ -35,6 +35,7 @@ public class EmbeddingsService {
     private let timeoutInterval: TimeInterval
     private let maxRetries: Int
     private let retryDelay: TimeInterval
+    private let backgroundProcessor: BackgroundProcessor
     
     public init(model: EmbeddingModel = .nomicEmbedText, 
                 ollamaBaseURL: String = "http://localhost:11434",
@@ -46,6 +47,19 @@ public class EmbeddingsService {
         self.timeoutInterval = timeoutInterval
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
+        self.backgroundProcessor = BackgroundProcessor.shared
+    }
+    
+    /// Schedule embedding generation as a background job
+    public func scheduleEmbeddingGeneration(for text: String, priority: JobPriority = .normal) -> String {
+        return backgroundProcessor.submitTask(
+            name: "generate_embedding",
+            priority: priority,
+            retryPolicy: .conservative
+        ) { [weak self] in
+            guard let self = self else { throw JobError.resourceUnavailable }
+            return try await self.generateEmbedding(for: text)
+        }
     }
     
     public func generateEmbedding(for text: String) async throws -> [Float] {
@@ -88,13 +102,33 @@ public class EmbeddingsService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeoutInterval
         
-        let payload: [String: Any] = [
+        // Try primary format (Ollama expects "prompt")
+        let primaryPayload: [String: Any] = [
             "model": model.rawValue,
             "prompt": text
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: primaryPayload)
+            let result = try await executeRequest(request: request)
+            return result
+        } catch EmbeddingError.apiError(let message) where message.contains("400") {
+            // If 400 error, try alternative format with "input" field
+            print("⚠️  Primary format failed with 400, trying alternative format with 'input' field")
+            
+            let alternativePayload: [String: Any] = [
+                "model": model.rawValue,
+                "input": text
+            ]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: alternativePayload)
+            return try await executeRequest(request: request)
+        } catch {
+            throw error
+        }
+    }
+    
+    private func executeRequest(request: URLRequest) async throws -> [Float] {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -111,11 +145,22 @@ public class EmbeddingsService {
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let embedding = json?["embedding"] as? [Double] else {
+        
+        // Try different response field formats
+        if let embedding = json?["embedding"] as? [Double] {
+            return embedding.map { Float($0) }
+        } else if let embedding = json?["embeddings"] as? [Double] {
+            // Some providers use "embeddings" (plural)
+            return embedding.map { Float($0) }
+        } else if let data = json?["data"] as? [[String: Any]],
+                  let firstData = data.first,
+                  let embedding = firstData["embedding"] as? [Double] {
+            // OpenAI-style response format
+            return embedding.map { Float($0) }
+        } else {
+            print("⚠️  Unexpected response format: \(json ?? [:])")
             throw EmbeddingError.invalidResponse
         }
-        
-        return embedding.map { Float($0) }
     }
     
     func generateEmbeddings(for texts: [String]) async throws -> [[Float]] {

@@ -52,7 +52,16 @@ let package = Package(
                 "AssistantCore.swift",
                 "LLMService.swift", 
                 "ToolRegistry.swift",
-                "TestAssistantCore.swift"
+                "TestAssistantCore.swift",
+                "PerformanceMonitor.swift",
+                "CacheManager.swift",
+                "ConfigurationManager.swift",
+                "ErrorHandler.swift",
+                "BackgroundProcessor.swift",
+                "PlanManager.swift",
+                "AuditLogger.swift",
+                "CompensationManager.swift",
+                "CLISafety.swift"
             ]
         ),
         .executableTarget(

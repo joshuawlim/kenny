@@ -34,6 +34,7 @@ public struct HybridSearchResult {
 public class HybridSearch {
     private let database: Database
     private let embeddingsService: EmbeddingsService
+    private let configManager: ConfigurationManager
     private let bm25Weight: Float
     private let embeddingWeight: Float
     
@@ -43,12 +44,14 @@ public class HybridSearch {
          embeddingWeight: Float = 0.5) {
         self.database = database
         self.embeddingsService = embeddingsService
+        self.configManager = ConfigurationManager.shared
         self.bm25Weight = bm25Weight
         self.embeddingWeight = embeddingWeight
     }
     
     public func search(query: String, limit: Int = 10) async throws -> [HybridSearchResult] {
-        let queryEmbedding = try await embeddingsService.generateEmbedding(for: query)
+        return try await PerformanceMonitor.shared.recordAsyncOperation("hybrid_search.search") {
+            let queryEmbedding = try await embeddingsService.generateEmbedding(for: query)
         
         let bm25Results = try searchBM25(query: query, limit: limit * 2)
         
@@ -57,11 +60,12 @@ public class HybridSearch {
             limit: limit * 2
         )
         
-        return combineResults(
-            bm25Results: bm25Results,
-            embeddingResults: embeddingResults,
-            limit: limit
-        )
+            return combineResults(
+                bm25Results: bm25Results,
+                embeddingResults: embeddingResults,
+                limit: limit
+            )
+        }
     }
     
     private func searchBM25(query: String, limit: Int) throws -> [(String, Float, String)] {

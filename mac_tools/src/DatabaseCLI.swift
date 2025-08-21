@@ -26,7 +26,7 @@ struct InitDB: ParsableCommand {
         abstract: "Initialize database with schema"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
     func run() throws {
@@ -54,13 +54,53 @@ struct IngestFull: ParsableCommand {
         abstract: "Run full data ingest"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
-    @Flag(help: "Dry run mode")
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
     var dryRun: Bool = false
     
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
     func run() throws {
+        // Safety enforcement for mutating operations
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default"
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_full",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                // Show dry run results and confirmation prompt
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "~50 documents",
+                    "estimated_duration": "2-5 seconds"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                // Force dry run first
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
         let db = Database(path: dbPath)
         let ingestManager = IngestManager(database: db)
         
@@ -106,10 +146,10 @@ struct IngestIncremental: ParsableCommand {
         abstract: "Run incremental data ingest"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
-    @Option(help: "Since timestamp")
+    @Option(name: .long, help: "Since timestamp")
     var since: String?
     
     func run() throws {
@@ -150,7 +190,7 @@ struct Search: ParsableCommand {
     @Argument(help: "Search query")
     var query: String
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
     @Option(help: "Content types to search")
@@ -189,7 +229,7 @@ struct TestQueries: ParsableCommand {
         abstract: "Run canned test queries for validation"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
     func run() throws {
@@ -257,7 +297,7 @@ struct Stats: ParsableCommand {
         abstract: "Show database statistics"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
     func run() throws {
@@ -308,19 +348,52 @@ struct IngestEmbeddings: ParsableCommand {
         abstract: "Generate embeddings for all documents"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
-    @Flag(help: "Force regeneration of all embeddings")
+    @Flag(name: .long, help: "Force regeneration of all embeddings")
     var force: Bool = false
     
-    @Option(help: "Embedding model to use")
+    @Option(name: .long, help: "Embedding model to use")
     var model: String = "nomic-embed-text"
     
-    @Option(help: "Batch size for processing")
+    @Option(name: .customLong("batch-size"), help: "Batch size for processing")
     var batchSize: Int = 10
     
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
     func run() async throws {
+        // Safety enforcement for mutating operations
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "force": force,
+            "model": model,
+            "batch_size": batchSize
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_embeddings",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let _) {
+            print(CLISafety.shared.showConfirmationPrompt(
+                operation: operation,
+                parameters: parameters,
+                dryRunResult: [
+                    "would_generate": force ? "All embeddings" : "Missing embeddings only",
+                    "estimated_time": "2-10 minutes",
+                    "model": model
+                ]
+            ))
+            return
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
         let db = Database(path: dbPath)
         let embeddingModel = EmbeddingModel(rawValue: model) ?? .nomicEmbedText
         let embeddingsService = EmbeddingsService(model: embeddingModel)
@@ -380,16 +453,16 @@ struct HybridSearchCommand: ParsableCommand {
     @Argument(help: "Search query")
     var query: String
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String?
     
     @Option(help: "Number of results")
     var limit: Int = 10
     
-    @Option(help: "BM25 weight (0-1)")
+    @Option(name: .customLong("bm25-weight"), help: "BM25 weight (0-1)")
     var bm25Weight: Float = 0.5
     
-    @Option(help: "Embedding weight (0-1)")
+    @Option(name: .customLong("embedding-weight"), help: "Embedding weight (0-1)")
     var embeddingWeight: Float = 0.5
     
     func run() async throws {

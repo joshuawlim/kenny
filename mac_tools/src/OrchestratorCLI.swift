@@ -74,7 +74,7 @@ struct IngestCommand: ParsableCommand {
     @Option(help: "Data sources to ingest (comma-separated)")
     var sources: String = ""
     
-    @Flag(help: "Perform full sync (otherwise incremental)")
+    @Flag(name: .customLong("full-sync"), help: "Perform full sync (otherwise incremental)")
     var fullSync: Bool = false
     
     func run() throws {

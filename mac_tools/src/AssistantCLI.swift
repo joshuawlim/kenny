@@ -26,10 +26,10 @@ struct ProcessQuery: AsyncParsableCommand {
     @Argument(help: "User query to process")
     var query: String
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
     
-    @Option(help: "Maximum retry attempts")
+    @Option(name: .customLong("max-retries"), help: "Maximum retry attempts")
     var maxRetries: Int = 3
     
     @Flag(help: "Enable verbose output (default is JSON-only)")
@@ -79,7 +79,7 @@ struct TestSuite: AsyncParsableCommand {
         abstract: "Run 10 deterministic test cases using live data"
     )
     
-    @Option(help: "Database path") 
+    @Option(name: .customLong("db-path"), help: "Database path") 
     var dbPath: String = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
     
     func run() async throws {
@@ -150,7 +150,7 @@ struct TestDeterministic: AsyncParsableCommand {
         abstract: "Run 10 deterministic test cases proving Week 4 capabilities"
     )
     
-    @Option(help: "Database path")
+    @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
     
     func run() async throws {
@@ -188,7 +188,7 @@ struct CheckLLM: AsyncParsableCommand {
         abstract: "Check LLM availability and setup"
     )
     
-    @Option(help: "Ollama model name")
+    @Option(name: .customLong("model-name"), help: "Ollama model name")
     var model: String = "llama3.2:3b"
     
     func run() async throws {

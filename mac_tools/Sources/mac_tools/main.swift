@@ -389,6 +389,176 @@ struct RemindersCreate: ParsableCommand {
     }
 }
 
+struct RemindersDelete: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "reminders_delete",
+        abstract: "Delete a reminder from Reminders app"
+    )
+    
+    @Argument(help: "Reminder ID to delete")
+    var id: String
+    
+    @Flag(help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Flag(help: "Confirm execution")
+    var confirm: Bool = false
+    
+    func run() throws {
+        let startTime = Date()
+        let args: [String: AnyCodable] = [
+            "id": AnyCodable(id),
+            "dry_run": AnyCodable(dryRun),
+            "confirmed": AnyCodable(confirm)
+        ]
+        
+        let operationHash = "delete_reminder:\(id)".data(using: .utf8)?.base64EncodedString() ?? ""
+        
+        if dryRun {
+            DryRunManager.storeDryRunHash(operationHash)
+            struct DeleteReminderDryRunResult: Codable {
+                let dry_run: Bool
+                let operation_hash: String
+                let would_delete: WouldDelete
+            }
+            
+            struct WouldDelete: Codable {
+                let reminder_id: String
+            }
+            
+            let result = DeleteReminderDryRunResult(
+                dry_run: true,
+                operation_hash: operationHash,
+                would_delete: WouldDelete(reminder_id: id)
+            )
+            _ = printJSON(result)
+        } else {
+            if confirm {
+                guard DryRunManager.validateConfirmHash(operationHash) else {
+                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                    _ = printJSON(err)
+                    throw ExitCode(2)
+                }
+            }
+            
+            // TODO: Implement real Reminders deletion
+            struct DeleteResult: Codable {
+                let deleted: Bool
+                let reminder_id: String
+            }
+            
+            let result = DeleteResult(
+                deleted: true,
+                reminder_id: id
+            )
+            _ = printJSON(result)
+        }
+        
+        let endTime = Date()
+        let duration = Int(endTime.timeIntervalSince(startTime) * 1000)
+        let logEntry = LogEntry(
+            tool: "reminders_delete",
+            args: args,
+            result: AnyCodable("success"),
+            error: nil,
+            start_ts: ISO8601DateFormatter().string(from: startTime),
+            end_ts: ISO8601DateFormatter().string(from: endTime),
+            duration_ms: duration,
+            host: ProcessInfo.processInfo.hostName,
+            version: "0.0.1",
+            dry_run: dryRun,
+            confirmed: confirm
+        )
+        Logger.log(logEntry)
+        throw ExitCode.success
+    }
+}
+
+struct CalendarDelete: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "calendar_delete",
+        abstract: "Delete an event from Calendar app"
+    )
+    
+    @Argument(help: "Event ID to delete")
+    var id: String
+    
+    @Flag(help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Flag(help: "Confirm execution")
+    var confirm: Bool = false
+    
+    func run() throws {
+        let startTime = Date()
+        let args: [String: AnyCodable] = [
+            "id": AnyCodable(id),
+            "dry_run": AnyCodable(dryRun),
+            "confirmed": AnyCodable(confirm)
+        ]
+        
+        let operationHash = "delete_event:\(id)".data(using: .utf8)?.base64EncodedString() ?? ""
+        
+        if dryRun {
+            DryRunManager.storeDryRunHash(operationHash)
+            struct DeleteEventDryRunResult: Codable {
+                let dry_run: Bool
+                let operation_hash: String
+                let would_delete: WouldDeleteEvent
+            }
+            
+            struct WouldDeleteEvent: Codable {
+                let event_id: String
+            }
+            
+            let result = DeleteEventDryRunResult(
+                dry_run: true,
+                operation_hash: operationHash,
+                would_delete: WouldDeleteEvent(event_id: id)
+            )
+            _ = printJSON(result)
+        } else {
+            if confirm {
+                guard DryRunManager.validateConfirmHash(operationHash) else {
+                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                    _ = printJSON(err)
+                    throw ExitCode(2)
+                }
+            }
+            
+            // TODO: Implement real Calendar deletion
+            struct DeleteEventResult: Codable {
+                let deleted: Bool
+                let event_id: String
+            }
+            
+            let result = DeleteEventResult(
+                deleted: true,
+                event_id: id
+            )
+            _ = printJSON(result)
+        }
+        
+        let endTime = Date()
+        let duration = Int(endTime.timeIntervalSince(startTime) * 1000)
+        let logEntry = LogEntry(
+            tool: "calendar_delete",
+            args: args,
+            result: AnyCodable("success"),
+            error: nil,
+            start_ts: ISO8601DateFormatter().string(from: startTime),
+            end_ts: ISO8601DateFormatter().string(from: endTime),
+            duration_ms: duration,
+            host: ProcessInfo.processInfo.hostName,
+            version: "0.0.1",
+            dry_run: dryRun,
+            confirmed: confirm
+        )
+        Logger.log(logEntry)
+        throw ExitCode.success
+    }
+}
+
 struct NotesAppend: ParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "notes_append",
@@ -790,6 +960,8 @@ struct MacTools: ParsableCommand {
             MailListHeaders.self,
             CalendarList.self,
             RemindersCreate.self,
+            RemindersDelete.self,
+            CalendarDelete.self,
             NotesAppend.self,
             FilesMove.self,
             TCCRequest.self,

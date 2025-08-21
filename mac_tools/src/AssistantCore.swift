@@ -1,11 +1,13 @@
 import Foundation
 
-/// AssistantCore: Week 4 intelligent function calling system
-/// Capabilities: tool selection, argument validation, execution, retry with error summarization
+/// AssistantCore: Week 5 Plan → Confirm → Execute workflow system
+/// Capabilities: multi-step planning, user confirmation, execution with rollback, audit logging
 public class AssistantCore {
     private let database: Database
     private let llmService: LLMService
     private let toolRegistry: ToolRegistry
+    private let planManager: PlanManager
+    private let configManager: ConfigurationManager
     private let maxRetries: Int
     private let verbose: Bool
     
@@ -13,72 +15,152 @@ public class AssistantCore {
         self.database = database
         self.llmService = LLMService()
         self.toolRegistry = ToolRegistry()
+        self.planManager = PlanManager.shared
+        self.configManager = ConfigurationManager.shared
         self.maxRetries = maxRetries
         self.verbose = verbose
     }
     
-    /// Main entry point: process user query and execute appropriate tool
-    public func processQuery(_ query: String) async throws -> AssistantResponse {
-        let startTime = Date()
-        var attempts = 0
-        var lastError: Error?
-        
-        if verbose { print("🤖 Processing query: '\(query)'") }
-        
-        while attempts < maxRetries {
-            attempts += 1
-            
-            do {
-                // Step 1: Choose appropriate tool using LLM reasoning
-                let toolSelection = try await selectTool(for: query, attempt: attempts)
-                if verbose { print("🔧 Selected tool: \(toolSelection.toolName)") }
+    // MARK: - Week 5: Plan → Confirm → Execute Workflow
+    
+    /// Create an execution plan for a user query
+    public func createPlan(for query: String) async throws -> ExecutionPlan {
+        return try await ErrorHandler.shared.executeWithRetry(operation: "create_plan") {
+            return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.create_plan") {
+                if verbose { print("📋 Creating execution plan for: '\(query)'") }
                 
-                // Step 2: Validate arguments against JSON schema
-                try validateArguments(toolSelection.toolName, arguments: toolSelection.arguments)
-                if verbose { print("✅ Arguments validated") }
-                
-                // Step 3: Execute tool with validated arguments
-                let result = try await executeTool(toolSelection.toolName, arguments: toolSelection.arguments)
-                if verbose { print("🚀 Tool executed successfully") }
-                
-                // Step 4: Return structured result
-                let duration = Date().timeIntervalSince(startTime)
-                return AssistantResponse(
-                    success: true,
-                    result: result,
-                    toolUsed: toolSelection.toolName,
-                    attempts: attempts,
-                    duration: duration,
-                    error: nil
+                let plan = try await planManager.createPlan(
+                    for: query,
+                    toolRegistry: toolRegistry,
+                    llmService: llmService
                 )
                 
-            } catch {
-                lastError = error
-                if verbose { print("❌ Attempt \(attempts) failed: \(error)") }
-                
-                // Don't retry for validation errors
-                if error is ValidationError {
-                    break
+                if verbose { 
+                    print("📋 Created plan \(plan.id) with \(plan.steps.count) steps")
+                    if !plan.risks.isEmpty {
+                        print("⚠️  Plan has \(plan.risks.count) identified risks")
+                    }
                 }
                 
-                if attempts < maxRetries {
-                    print("🔄 Retrying with error context...")
-                }
+                return plan
             }
         }
+    }
+    
+    /// Confirm and execute a plan
+    public func confirmAndExecutePlan(_ planId: String, userHash: String? = nil) async throws -> AssistantResponse {
+        return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.confirm_execute_plan") {
+            let startTime = Date()
+            
+            if verbose { print("✅ Confirming and executing plan: \(planId)") }
+            
+            // Step 1: Confirm the plan
+            let confirmedPlan = try await planManager.confirmPlan(planId, userHash: userHash)
+            
+            // Step 2: Execute the plan
+            let executionResult = try await planManager.executePlan(planId, toolRegistry: toolRegistry)
+            
+            let duration = Date().timeIntervalSince(startTime)
+            
+            if verbose {
+                if executionResult.success {
+                    print("🎉 Plan executed successfully: \(executionResult.completedSteps)/\(executionResult.totalSteps) steps")
+                } else {
+                    print("❌ Plan execution failed at step \(executionResult.failedStepIndex ?? 0)")
+                }
+            }
+            
+            return AssistantResponse(
+                success: executionResult.success,
+                result: executionResult.toDictionary(),
+                toolUsed: "plan_execution",
+                attempts: 1,
+                duration: duration,
+                error: executionResult.success ? nil : "Plan execution failed",
+                planId: planId,
+                correlationId: executionResult.correlationId
+            )
+        }
+    }
+    
+    /// Legacy single-step execution (for backward compatibility)
+    public func processQuery(_ query: String) async throws -> AssistantResponse {
+        return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.process_query_legacy") {
+            let startTime = Date()
+            
+            if verbose { print("🤖 Processing query (legacy mode): '\(query)'") }
+            
+            // Create a simple plan and execute immediately for non-mutating operations
+            let plan = try await createPlan(for: query)
+            
+            // Safety policy: Block untrusted content
+            if plan.contentOrigin == .untrusted {
+                let duration = Date().timeIntervalSince(startTime)
+                return AssistantResponse(
+                    success: false,
+                    result: ["error": "Blocked untrusted content", "reason": "Query contains suspicious patterns"],
+                    toolUsed: "safety_filter",
+                    attempts: 1,
+                    duration: duration,
+                    error: "Query blocked by safety policy",
+                    planId: plan.id,
+                    correlationId: plan.correlationId
+                )
+            }
+            
+            // Check if plan requires user confirmation based on configuration
+            let hasMutatingSteps = plan.steps.contains { $0.isMutating }
+            let hasHighRiskSteps = plan.risks.contains { $0.riskLevel == .high || $0.riskLevel == .critical }
+            
+            let safetyStrictness = configManager.features.safetyStrictness
+            let requiresConfirmation = shouldRequireConfirmation(
+                hasMutatingSteps: hasMutatingSteps,
+                hasHighRiskSteps: hasHighRiskSteps,
+                strictness: safetyStrictness,
+                contentOrigin: plan.contentOrigin
+            )
+            
+            if requiresConfirmation {
+                // Return plan for user confirmation
+                let duration = Date().timeIntervalSince(startTime)
+                return AssistantResponse(
+                    success: false,
+                    result: plan.toDictionary(),
+                    toolUsed: "plan_creation",
+                    attempts: 1,
+                    duration: duration,
+                    error: "Plan requires user confirmation",
+                    planId: plan.id,
+                    correlationId: plan.correlationId,
+                    requiresConfirmation: true
+                )
+            } else {
+                // Auto-confirm and execute for safe operations
+                return try await confirmAndExecutePlan(plan.id)
+            }
+        }
+    }
+    
+    // MARK: - Configuration-Based Helpers
+    
+    private func shouldRequireConfirmation(hasMutatingSteps: Bool, hasHighRiskSteps: Bool, strictness: String, contentOrigin: ContentOrigin) -> Bool {
+        // Always require confirmation for external content
+        if contentOrigin == .external {
+            return true
+        }
         
-        // Step 5: Return failure with error summarization
-        let errorSummary = summarizeError(lastError ?? AssistantError.maxRetriesExceeded)
-        let duration = Date().timeIntervalSince(startTime)
-        
-        return AssistantResponse(
-            success: false,
-            result: nil,
-            toolUsed: nil,
-            attempts: attempts,
-            duration: duration,
-            error: errorSummary
-        )
+        switch strictness {
+        case "low":
+            return hasHighRiskSteps && hasMutatingSteps
+        case "medium":
+            return hasMutatingSteps || hasHighRiskSteps
+        case "high":
+            return hasMutatingSteps || hasHighRiskSteps
+        case "paranoid":
+            return true // Always require confirmation
+        default:
+            return hasMutatingSteps || hasHighRiskSteps
+        }
     }
     
     // MARK: - Step 1: Tool Selection
@@ -330,12 +412,28 @@ public struct AssistantResponse {
     public let attempts: Int
     public let duration: TimeInterval
     public let error: String?
+    public let planId: String?
+    public let correlationId: String?
+    public let requiresConfirmation: Bool
+    
+    public init(success: Bool, result: [String: Any]?, toolUsed: String?, attempts: Int, duration: TimeInterval, error: String?, planId: String? = nil, correlationId: String? = nil, requiresConfirmation: Bool = false) {
+        self.success = success
+        self.result = result
+        self.toolUsed = toolUsed
+        self.attempts = attempts
+        self.duration = duration
+        self.error = error
+        self.planId = planId
+        self.correlationId = correlationId
+        self.requiresConfirmation = requiresConfirmation
+    }
     
     public func toDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "success": success,
             "attempts": attempts,
-            "duration": duration
+            "duration": duration,
+            "requires_confirmation": requiresConfirmation
         ]
         
         if let result = result {
@@ -346,6 +444,12 @@ public struct AssistantResponse {
         }
         if let error = error {
             dict["error"] = error
+        }
+        if let planId = planId {
+            dict["plan_id"] = planId
+        }
+        if let correlationId = correlationId {
+            dict["correlation_id"] = correlationId
         }
         
         return dict

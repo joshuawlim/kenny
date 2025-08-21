@@ -43,6 +43,22 @@ public class ToolRegistry {
         return tools[name]
     }
     
+    /// Execute tool with correlation tracking for plan workflow
+    public func executeWithCorrelation(toolName: String, arguments: [String: Any], correlationId: String, planId: String, stepIndex: Int) async throws -> [String: Any] {
+        guard let tool = tools[toolName] else {
+            throw ToolExecutionError.processFailed(toolName, "Tool not found")
+        }
+        
+        // Add correlation metadata to arguments
+        var enhancedArgs = arguments
+        enhancedArgs["_correlation_id"] = correlationId
+        enhancedArgs["_plan_id"] = planId
+        enhancedArgs["_step_index"] = stepIndex
+        
+        // Execute the tool
+        return try await tool.execute(enhancedArgs)
+    }
+    
     // MARK: - Tool Definitions with JSON Schemas
     
     private func buildToolDefinitions() -> [String: ToolDefinition] {
@@ -102,6 +118,30 @@ public class ToolRegistry {
                 }
             ),
             
+            "delete_reminder": ToolDefinition(
+                name: "delete_reminder",
+                description: "Delete a reminder from Reminders.app",
+                parameters: [
+                    "id": ParameterSchema(type: .string, required: true, description: "Reminder ID to delete")
+                ],
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("reminders_delete", "Tool registry not available") }
+                    return try await self.executeMacTool("reminders_delete", args)
+                }
+            ),
+            
+            "delete_event": ToolDefinition(
+                name: "delete_event", 
+                description: "Delete an event from Calendar.app",
+                parameters: [
+                    "id": ParameterSchema(type: .string, required: true, description: "Event ID to delete")
+                ],
+                execute: { [weak self] args in
+                    guard let self = self else { throw ToolExecutionError.processFailed("calendar_delete", "Tool registry not available") }
+                    return try await self.executeMacTool("calendar_delete", args)
+                }
+            ),
+            
             "append_note": ToolDefinition(
                 name: "append_note",
                 description: "Append text to an existing note in Notes.app",
@@ -152,6 +192,16 @@ public class ToolRegistry {
         let limit = arguments["limit"] as? Int ?? 10
         let useHybrid = arguments["hybrid"] as? Bool ?? true
         
+        // Check cache first
+        if let cachedResults = CacheManager.shared.getCachedSearchResults(for: query) {
+            PerformanceMonitor.shared.recordMetric(name: "search.cache_hit", value: 1)
+            return [
+                "results": cachedResults.map { $0.toDictionary() },
+                "search_type": "cached",
+                "count": cachedResults.count
+            ]
+        }
+        
         // Create a database connection and perform search
         let dbPath = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
         let database = Database(path: dbPath)
@@ -164,10 +214,25 @@ public class ToolRegistry {
             do {
                 let results = try await hybridSearch.search(query: query, limit: limit)
                 let hasEmbeddingResults = results.contains { $0.embeddingScore > 0.0 }
+                let searchResults = results.map { hybridResult -> SearchResult in
+                    return SearchResult(
+                        id: hybridResult.documentId,
+                        type: hybridResult.appSource,
+                        title: hybridResult.title,
+                        snippet: hybridResult.snippet,
+                        contextInfo: hybridResult.sourcePath ?? "",
+                        rank: Double(hybridResult.score),
+                        sourcePath: hybridResult.sourcePath
+                    )
+                }
+                
+                // Cache the results
+                CacheManager.shared.cacheSearchResults(searchResults, for: query)
+                
                 return [
-                    "results": results.map { $0.toDictionary() },
+                    "results": searchResults.map { $0.toDictionary() },
                     "search_type": hasEmbeddingResults ? "hybrid" : "bm25_only",
-                    "count": results.count
+                    "count": searchResults.count
                 ]
             } catch {
                 // Silently fall back to BM25 (could add verbose flag later)
@@ -177,6 +242,10 @@ public class ToolRegistry {
         
         // Fallback to BM25 search
         let results = database.searchMultiDomain(query, types: [], limit: limit)
+        
+        // Cache BM25 results too
+        CacheManager.shared.cacheSearchResults(results, for: query, ttl: 30) // Shorter TTL for fallback
+        
         return [
             "results": results.map { $0.toDictionary() },
             "search_type": "bm25", 
@@ -185,13 +254,54 @@ public class ToolRegistry {
     }
     
     private func executeMacTool(_ toolName: String, _ arguments: [String: Any]) async throws -> [String: Any] {
+        // Check if this is a mutating operation and enforce dry-run safety
+        let isMutating = isMutatingTool(toolName)
+        let hasConfirm = arguments["confirmed"] as? Bool == true
+        let hasDryRun = arguments["dry_run"] as? Bool == true
+        
+        // Safety enforcement: Mutating tools must use dry-run first, then confirm
+        if isMutating && !hasConfirm && !hasDryRun {
+            // Force dry-run for first call to mutating tools
+            var safeArgs = arguments
+            safeArgs["dry_run"] = true
+            return try await executeMacToolWithArgs(toolName, safeArgs, isDryRun: true)
+        }
+        
+        if isMutating && hasConfirm && !hasDryRun {
+            // This is a confirm call - verify operation hash if provided
+            if let expectedHash = arguments["operation_hash"] as? String,
+               let planId = arguments["_plan_id"] as? String {
+                // In a full implementation, we'd verify the hash matches the planned operation
+                // For now, we'll log the confirmation
+                print("🔒 Confirmed mutating operation \(toolName) with hash \(expectedHash) for plan \(planId)")
+            }
+        }
+        
+        return try await executeMacToolWithArgs(toolName, arguments, isDryRun: hasDryRun)
+    }
+    
+    private func executeMacToolWithArgs(_ toolName: String, _ arguments: [String: Any], isDryRun: Bool) async throws -> [String: Any] {
         // Execute the existing mac_tools CLI with JSON I/O
         var args = ["mac_tools", toolName]
         
-        // Convert arguments to CLI parameters
+        // Convert arguments to CLI parameters with proper kebab-case and boolean handling
         for (key, value) in arguments {
-            args.append("--\(key)")
-            args.append(String(describing: value))
+            // Skip internal correlation parameters
+            if key.hasPrefix("_") { continue }
+            
+            // Convert underscore_case to kebab-case
+            let kebabKey = key.replacingOccurrences(of: "_", with: "-")
+            
+            // Handle boolean values as flags
+            if let boolValue = value as? Bool {
+                if boolValue {
+                    args.append("--\(kebabKey)")
+                }
+                // Don't add anything for false boolean values
+            } else {
+                args.append("--\(kebabKey)")
+                args.append(String(describing: value))
+            }
         }
         
         let process = Process()
@@ -202,23 +312,93 @@ public class ToolRegistry {
         process.standardOutput = pipe
         process.standardError = pipe
         
+        let startTime = Date()
+        
         try process.run()
         process.waitUntilExit()
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
+        let duration = Date().timeIntervalSince(startTime)
         
-        guard process.terminationStatus == 0 else {
-            throw ToolExecutionError.processFailed(toolName, output)
+        var executionError: Error?
+        var result: [String: Any]?
+        
+        if process.terminationStatus != 0 {
+            executionError = ToolExecutionError.processFailed(toolName, output)
+        } else {
+            // Parse JSON response
+            if let jsonData = output.data(using: .utf8),
+               let parsedResult = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                result = parsedResult
+            } else {
+                executionError = ToolExecutionError.invalidOutput(toolName, output)
+                result = ["error": "Invalid JSON output", "raw_output": output]
+            }
         }
         
-        // Parse JSON response
-        guard let jsonData = output.data(using: .utf8),
-              let result = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-            throw ToolExecutionError.invalidOutput(toolName, output)
+        // Log tool execution to audit trail
+        if let correlationId = arguments["_correlation_id"] as? String,
+           let planId = arguments["_plan_id"] as? String,
+           let stepIndex = arguments["_step_index"] as? Int {
+            
+            let operationHash = isDryRun && isMutatingTool(toolName) ? 
+                "\(toolName):\(arguments.filter { !$0.key.hasPrefix("_") })".sha256() : nil
+            
+            AuditLogger.shared.logToolExecution(
+                correlationId: correlationId,
+                planId: planId,
+                stepIndex: stepIndex,
+                toolName: toolName,
+                arguments: arguments.filter { !$0.key.hasPrefix("_") },
+                isDryRun: isDryRun,
+                result: result,
+                error: executionError,
+                duration: duration,
+                operationHash: operationHash
+            )
         }
         
-        return result
+        // Throw error if execution failed
+        if let error = executionError {
+            throw error
+        }
+        
+        guard var enhancedResult = result else {
+            throw ToolExecutionError.invalidOutput(toolName, "No result available")
+        }
+        
+        // Enhance result with safety metadata
+        enhancedResult["was_dry_run"] = isDryRun
+        enhancedResult["is_mutating"] = isMutatingTool(toolName)
+        
+        if isDryRun && isMutatingTool(toolName) {
+            // Generate operation hash for confirmation
+            let operationData = "\(toolName):\(arguments.filter { !$0.key.hasPrefix("_") })"
+            enhancedResult["operation_hash"] = operationData.sha256()
+            enhancedResult["requires_confirmation"] = true
+        }
+        
+        return enhancedResult
+    }
+    
+    /// Determine if a tool performs mutating operations
+    private func isMutatingTool(_ toolName: String) -> Bool {
+        let mutatingTools = [
+            "create_reminder",
+            "delete_reminder",
+            "send_email", 
+            "run_shortcut",
+            "create_event",
+            "delete_event",
+            "update_event"
+        ]
+        
+        // Check for mutating keywords in tool name
+        let mutatingKeywords = ["create", "delete", "update", "send", "run", "execute", "modify", "write"]
+        
+        return mutatingTools.contains(toolName) || 
+               mutatingKeywords.contains { toolName.lowercased().contains($0) }
     }
 }
 

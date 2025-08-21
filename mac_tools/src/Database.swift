@@ -93,6 +93,10 @@ public class Database {
                 sqlite3_bind_int64(statement, bindIndex, Int64(intParam))
             } else if let doubleParam = param as? Double {
                 sqlite3_bind_double(statement, bindIndex, doubleParam)
+            } else if let dataParam = param as? Data {
+                _ = dataParam.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob(statement, bindIndex, bytes.baseAddress, Int32(dataParam.count), nil)
+                }
             } else if param is NSNull {
                 sqlite3_bind_null(statement, bindIndex)
             }
@@ -114,6 +118,11 @@ public class Database {
                     row[columnName] = sqlite3_column_int64(statement, i)
                 case SQLITE_FLOAT:
                     row[columnName] = sqlite3_column_double(statement, i)
+                case SQLITE_BLOB:
+                    let blobBytes = sqlite3_column_bytes(statement, i)
+                    if let blobPtr = sqlite3_column_blob(statement, i), blobBytes > 0 {
+                        row[columnName] = Data(bytes: blobPtr, count: Int(blobBytes))
+                    }
                 case SQLITE_NULL:
                     row[columnName] = NSNull()
                 default:
@@ -151,6 +160,10 @@ public class Database {
                 sqlite3_bind_int64(statement, bindIndex, Int64(intVal))
             } else if let doubleVal = value as? Double {
                 sqlite3_bind_double(statement, bindIndex, doubleVal)
+            } else if let dataVal = value as? Data {
+                _ = dataVal.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob(statement, bindIndex, bytes.baseAddress, Int32(dataVal.count), nil)
+                }
             } else if value is NSNull {
                 sqlite3_bind_null(statement, bindIndex)
             }
@@ -520,10 +533,11 @@ extension Database {
     /// Search for similar documents using cosine similarity with embeddings
     public func searchEmbeddings(queryVector: [Float], limit: Int = 20) -> [(String, Float, String)] {
         let sql = """
-            SELECT d.id, d.title, d.content, e.embedding_vector
+            SELECT d.id, d.title, d.content, e.vector, c.text as chunk_text
             FROM documents d
-            JOIN embeddings e ON d.id = e.document_id
-            WHERE e.embedding_vector IS NOT NULL
+            JOIN chunks c ON d.id = c.document_id
+            JOIN embeddings e ON c.id = e.chunk_id
+            WHERE e.vector IS NOT NULL
             ORDER BY d.created_at DESC
             LIMIT 1000
         """
@@ -540,8 +554,11 @@ extension Database {
                 }
                 
                 let id = String(cString: idPtr)
-                let title = String(cString: titlePtr)  
+                let _ = String(cString: titlePtr)  
                 let content = String(cString: contentPtr)
+                
+                // Get chunk text for snippet
+                let chunkText = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? content
                 
                 // Extract embedding vector from BLOB
                 let blobBytes = sqlite3_column_bytes(stmt, 3)
@@ -550,7 +567,7 @@ extension Database {
                     if let vector = deserializeFloatArray(from: data) {
                         let similarity = cosineSimilarity(queryVector, vector)
                         if similarity > 0.1 { // Threshold for relevance
-                            let snippet = String(content.prefix(200))
+                            let snippet = String(chunkText.prefix(200))
                             results.append((id, similarity, snippet))
                         }
                     }
@@ -589,6 +606,112 @@ extension Database {
         guard magnitudeA > 0 && magnitudeB > 0 else { return 0.0 }
         
         return dotProduct / (magnitudeA * magnitudeB)
+    }
+    
+    // MARK: - Chunk and Embedding Management
+    
+    /// Store chunks for a document
+    public func storeChunks(_ chunks: [EmbeddingChunk]) -> Bool {
+        for chunk in chunks {
+            let now = Int(Date().timeIntervalSince1970)
+            let metadataJson: String
+            if let jsonData = try? JSONSerialization.data(withJSONObject: chunk.metadata),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                metadataJson = jsonString
+            } else {
+                metadataJson = "{}"
+            }
+            
+            let chunkData: [String: Any] = [
+                "id": chunk.id,
+                "document_id": chunk.documentId,
+                "text": chunk.text,
+                "chunk_index": chunk.chunkIndex,
+                "start_offset": chunk.startOffset,
+                "end_offset": chunk.endOffset,
+                "metadata_json": metadataJson,
+                "created_at": now,
+                "updated_at": now
+            ]
+            
+            if !insert("chunks", data: chunkData) {
+                print("Failed to store chunk: \(chunk.id)")
+                return false
+            }
+        }
+        return true
+    }
+    
+    /// Store embedding vector for a chunk
+    public func storeEmbedding(chunkId: String, vector: [Float], model: String) -> Bool {
+        let now = Int(Date().timeIntervalSince1970)
+        let vectorData = serializeFloatArray(vector)
+        
+        let embeddingData: [String: Any] = [
+            "id": UUID().uuidString,
+            "chunk_id": chunkId,
+            "model": model,
+            "vector": vectorData,
+            "dimensions": vector.count,
+            "created_at": now
+        ]
+        
+        return insert("embeddings", data: embeddingData)
+    }
+    
+    /// Get chunks for a document that don't have embeddings yet
+    public func getUnembeddedChunks(for documentId: String? = nil) -> [[String: Any]] {
+        var sql = """
+            SELECT c.id, c.document_id, c.text, c.chunk_index
+            FROM chunks c
+            LEFT JOIN embeddings e ON c.id = e.chunk_id
+            WHERE e.id IS NULL
+        """
+        
+        var parameters: [Any] = []
+        
+        if let documentId = documentId {
+            sql += " AND c.document_id = ?"
+            parameters.append(documentId)
+        }
+        
+        sql += " ORDER BY c.document_id, c.chunk_index LIMIT 100"
+        
+        return query(sql, parameters: parameters)
+    }
+    
+    /// Check if document has embeddings
+    public func hasEmbeddings(for documentId: String) -> Bool {
+        let sql = """
+            SELECT COUNT(*) as count
+            FROM chunks c
+            JOIN embeddings e ON c.id = e.chunk_id
+            WHERE c.document_id = ?
+        """
+        
+        let result = query(sql, parameters: [documentId])
+        return (result.first?["count"] as? Int64 ?? 0) > 0
+    }
+    
+    /// Get embedding statistics
+    public func getEmbeddingStats() -> [String: Any] {
+        let totalChunks = query("SELECT COUNT(*) as count FROM chunks").first?["count"] as? Int64 ?? 0
+        let embeddedChunks = query("SELECT COUNT(*) as count FROM embeddings").first?["count"] as? Int64 ?? 0
+        let unembeddedChunks = totalChunks - embeddedChunks
+        
+        let modelStats = query("""
+            SELECT model, COUNT(*) as count, AVG(dimensions) as avg_dimensions
+            FROM embeddings
+            GROUP BY model
+        """)
+        
+        return [
+            "total_chunks": totalChunks,
+            "embedded_chunks": embeddedChunks,
+            "unembedded_chunks": unembeddedChunks,
+            "embedding_coverage": totalChunks > 0 ? Double(embeddedChunks) / Double(totalChunks) : 0.0,
+            "models": modelStats
+        ]
     }
 }
 
