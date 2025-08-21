@@ -449,13 +449,17 @@ public class Database {
         for _ in 0..<5 { // Limit search depth
             let candidatePaths = [
                 searchPath + "/migrations",
-                searchPath + "/mac_tools/migrations"
+                searchPath + "/mac_tools/migrations",
+                "/Users/joshwlim/Documents/Kenny/mac_tools/migrations" // Direct path fix
             ]
             
             for candidatePath in candidatePaths {
                 if FileManager.default.fileExists(atPath: candidatePath) {
-                    return candidatePath.hasSuffix("/mac_tools/migrations") ? 
-                           searchPath + "/mac_tools" : searchPath
+                    if candidatePath.contains("/mac_tools/migrations") {
+                        return candidatePath.replacingOccurrences(of: "/migrations", with: "")
+                    } else {
+                        return searchPath
+                    }
                 }
             }
             
