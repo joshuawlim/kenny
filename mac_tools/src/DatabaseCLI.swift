@@ -3,7 +3,7 @@ import ArgumentParser
 import DatabaseCore
 
 @main
-struct DatabaseCLI: ParsableCommand {
+struct DatabaseCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "db_cli",
         abstract: "CLI tool for testing SQLite+FTS5 database functionality",
@@ -48,7 +48,7 @@ struct InitDB: ParsableCommand {
     }
 }
 
-struct IngestFull: ParsableCommand {
+struct IngestFull: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "ingest_full",
         abstract: "Run full data ingest"
@@ -63,7 +63,7 @@ struct IngestFull: ParsableCommand {
     @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
     var operationHash: String?
     
-    func run() throws {
+    func run() async throws {
         // Safety enforcement for mutating operations
         let parameters: [String: Any] = [
             "db_path": dbPath ?? "default"
@@ -124,18 +124,33 @@ struct IngestFull: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            // For now, simulate ingest
-            try? Thread.sleep(forTimeInterval: 1.0) // Simulate work
-            
-            let duration = Date().timeIntervalSince(startTime)
-            let result = Result(
-                status: "completed",
-                duration_seconds: duration,
-                items_processed: 50,
-                items_created: 45,
-                errors: 0
-            )
-            _ = printJSON(result)
+            // Run actual ingest with proper async/await
+            do {
+                try await ingestManager.runFullIngest()
+                
+                let totalDocs = try db.getDocumentCount()
+                let duration = Date().timeIntervalSince(startTime)
+                
+                let result = Result(
+                    status: "completed",
+                    duration_seconds: duration,
+                    items_processed: totalDocs,
+                    items_created: totalDocs,
+                    errors: 0
+                )
+                _ = printJSON(result)
+            } catch {
+                let duration = Date().timeIntervalSince(startTime)
+                let result = Result(
+                    status: "failed",
+                    duration_seconds: duration,
+                    items_processed: 0,
+                    items_created: 0,
+                    errors: 1
+                )
+                _ = printJSON(result)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            }
         }
     }
 }
@@ -203,6 +218,10 @@ struct Search: ParsableCommand {
         let db = Database(path: dbPath)
         
         let searchTypes = types?.split(separator: ",").map(String.init) ?? []
+        // Test simple search first
+        let simpleResults = db.testSimpleSearch(query)
+        print("Simple search returned \(simpleResults.count) results: \(simpleResults)")
+        
         let results = db.searchMultiDomain(query, types: searchTypes, limit: limit)
         
         struct SearchResponse: Codable {

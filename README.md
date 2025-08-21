@@ -68,15 +68,17 @@ sudo cp .build/release/orchestrator_cli /usr/local/bin/
 
 ### Testing Week 1-5 Capabilities
 
+**Note**: Run all commands from the Kenny root directory (not inside mac_tools/)
+
 #### 1. Basic Tool Layer Testing
 ```bash
 # Test the core CLI tools
-mac_tools version
-mac_tools tcc_request --calendar --contacts
+mac_tools/.build/release/mac_tools --version
+mac_tools/.build/release/mac_tools tcc_request --calendar --contacts
 
 # Test individual app integrations (note: calendar_list is placeholder, use database search)
-mac_tools reminders_create --title "Test reminder" --dry-run
-mac_tools tcc_request --calendar --reminders  # Request permissions first
+mac_tools/.build/release/mac_tools reminders_create --title "Test reminder" --dry-run
+mac_tools/.build/release/mac_tools tcc_request --calendar --reminders  # Request permissions first
 ```
 
 #### 2. Database & Ingestion Testing
@@ -85,15 +87,15 @@ mac_tools tcc_request --calendar --reminders  # Request permissions first
 ./scripts/setup_database.sh
 
 # Request app permissions (you'll see system prompts)
-mac_tools tcc_request --calendar --contacts --reminders
+mac_tools/.build/release/mac_tools tcc_request --calendar --contacts --reminders
 
 # Run full data ingestion (after granting permissions)
-db_cli ingest_full
+mac_tools/.build/release/db_cli ingest_full
 
 # Test search capabilities for your actual calendar events
-db_cli search "appointment"  # Search for your calendar events
-db_cli search "january 2025"  # Search by date
-db_cli stats  # Check what data was ingested
+mac_tools/.build/release/db_cli search "appointment"  # Search for your calendar events
+mac_tools/.build/release/db_cli search "january 2025"  # Search by date
+mac_tools/.build/release/db_cli stats  # Check what data was ingested
 ```
 
 #### 3. Embeddings & Hybrid Search Testing
@@ -111,11 +113,11 @@ db_cli stats  # Check what data was ingested
 #### 4. Assistant Core Testing
 ```bash
 # Test natural language to tool selection
-assistant_core test
+mac_tools/.build/release/assistant_core test
 
 # Individual query testing
-assistant_core query "show my calendar for today"
-assistant_core query "create a reminder to review budget"
+mac_tools/.build/release/assistant_core query "show my calendar for today"
+mac_tools/.build/release/assistant_core query "create a reminder to review budget"
 ```
 
 #### 5. Orchestrator Testing

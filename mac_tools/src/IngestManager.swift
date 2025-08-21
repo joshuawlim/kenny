@@ -98,7 +98,15 @@ public class IngestManager {
         
         // Request calendar access with modern API
         let status = EKEventStore.authorizationStatus(for: .event)
-        if status != .authorized && status != .fullAccess {
+        var needsAccess = false
+        
+        if #available(macOS 14.0, iOS 17.0, *) {
+            needsAccess = status != .authorized && status != .fullAccess
+        } else {
+            needsAccess = status != .authorized
+        }
+        
+        if needsAccess {
             try await requestCalendarAccess()
             // Reset event store after authorization change
             eventStore.reset()
@@ -128,9 +136,10 @@ public class IngestManager {
         for event in events {
             // Skip if we've already processed this event (incremental sync)
             if !isFullSync {
+                let sourceId = event.eventIdentifier ?? "no-id"
                 let existingEvent = database.query(
                     "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
-                    parameters: ["Calendar", event.eventIdentifier]
+                    parameters: ["Calendar", sourceId]
                 )
                 if !existingEvent.isEmpty {
                     // Check if event was modified since last sync
@@ -167,15 +176,18 @@ public class IngestManager {
             
             let content = contentParts.joined(separator: "\n")
             
+            let sourceId = event.eventIdentifier ?? "no-id-\(documentId)"
+            let hashString = "\(event.title ?? "")\(event.startDate)\(event.endDate ?? Date())\(content)"
+            
             let docData: [String: Any] = [
                 "id": documentId,
                 "type": "event",
                 "title": event.title ?? "Untitled Event",
                 "content": content,
                 "app_source": "Calendar",
-                "source_id": event.eventIdentifier,
-                "source_path": "calshow:\(event.eventIdentifier)",
-                "hash": "\(event.title ?? "")\(event.startDate)\(event.endDate ?? Date())\(content)".sha256(),
+                "source_id": sourceId,
+                "source_path": "calshow:\(sourceId)",
+                "hash": hashString.hashValue.description,
                 "created_at": Int(event.creationDate?.timeIntervalSince1970 ?? Double(now)),
                 "updated_at": Int(event.lastModifiedDate?.timeIntervalSince1970 ?? Double(now)),
                 "last_seen_at": now,

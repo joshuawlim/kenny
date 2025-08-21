@@ -81,13 +81,14 @@ public class Database {
         
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             print("ERROR preparing query: \(String(cString: sqlite3_errmsg(db)))")
+            print("SQL was: \(sql)")
             return []
         }
         
         // Bind parameters
         for (index, param) in parameters.enumerated() {
             let bindIndex = Int32(index + 1)
-            if let stringParam = param as? String {
+                if let stringParam = param as? String {
                 sqlite3_bind_text(statement, bindIndex, stringParam, -1, nil)
             } else if let intParam = param as? Int {
                 sqlite3_bind_int64(statement, bindIndex, Int64(intParam))
@@ -133,6 +134,12 @@ public class Database {
         }
         
         return results
+    }
+    
+    public func getDocumentCount() throws -> Int {
+        let sql = "SELECT COUNT(*) as count FROM documents"
+        let results = query(sql)
+        return results.first?["count"] as? Int ?? 0
     }
     
     public func insert(_ table: String, data: [String: Any]) -> Bool {
@@ -435,6 +442,11 @@ public class Database {
 
 // MARK: - Search Extensions
 extension Database {
+    public func testSimpleSearch(_ searchQuery: String) -> [[String: Any]] {
+        let sql = "SELECT d.id, d.title FROM documents_fts JOIN documents d ON documents_fts.rowid = d.rowid WHERE documents_fts MATCH ?"
+        return query(sql, parameters: [searchQuery])
+    }
+    
     public func searchMultiDomain(_ searchQuery: String, types: [String] = [], limit: Int = 20) -> [SearchResult] {
         var whereClause = "documents_fts MATCH ?"
         var parameters: [Any] = [searchQuery]
@@ -445,20 +457,13 @@ extension Database {
         }
         
         let sql = """
-            SELECT d.*, 
+            SELECT d.id, d.type, d.title, d.content, d.app_source, d.source_path,
                    snippet(documents_fts, 1, '<mark>', '</mark>', '...', 32) as search_snippet,
                    bm25(documents_fts) as rank,
-                   CASE d.type
-                       WHEN 'email' THEN COALESCE(e.from_name, '') || ' <' || COALESCE(e.from_address, '') || '>'
-                       WHEN 'event' THEN COALESCE(ev.location, '')
-                       WHEN 'file' THEN COALESCE(f.parent_directory, '') || '/' || d.title
-                       ELSE d.app_source
-                   END as context_info
+                   COALESCE(ev.location, '') as context_info
             FROM documents_fts 
             JOIN documents d ON documents_fts.rowid = d.rowid
-            LEFT JOIN emails e ON d.id = e.document_id
             LEFT JOIN events ev ON d.id = ev.document_id  
-            LEFT JOIN files f ON d.id = f.document_id
             WHERE \(whereClause)
             ORDER BY rank
             LIMIT ?
