@@ -3,7 +3,7 @@
 set -e
 
 DB_PATH="${1:-$HOME/Library/Application Support/Assistant/assistant.db}"
-MIGRATIONS_DIR="/Users/joshwlim/Documents/Kenny/mac_tools/migrations"
+MIGRATIONS_DIR="$(dirname "$0")/../mac_tools/migrations"
 
 echo "Kenny Database Setup"
 echo "==================="

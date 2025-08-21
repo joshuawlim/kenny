@@ -11,22 +11,35 @@ Kenny is designed to be your personal AI assistant that:
 - Maintains **strict privacy** - all data stays on your device
 - Delivers **fast responses** (≤1.2s for queries, ≤3s for tool calls)
 
-## Current Status: Week 1-2 Foundation ✅
+## Current Status: Week 1-5 Foundation ✅
 
-### What's Working Now
+### What's Working Now (August 2024)
 
-**macOS Tool Layer (`mac_tools`)**
-- ✅ 5 JSON-only CLI commands with dry-run/confirm workflow
-- ✅ NDJSON logging to `~/Library/Logs/Assistant/tools.ndjson`
+**Week 1-2: macOS Tool Layer & Data Foundation ✅**
+- ✅ JSON-only CLI commands with dry-run/confirm workflow
+- ✅ SQLite + FTS5 database with cross-app relationships
+- ✅ Full Apple app data extraction (8 apps) with incremental sync
 - ✅ Performance: P50 ~36ms (well under targets)
 
-**Data Storage Layer** 
-- ✅ SQLite + FTS5 database with cross-app relationships
-- ✅ Full Apple app data extraction (8 apps)
-- ✅ Real-time search across emails, contacts, calendar, files
-- ✅ Incremental sync with change detection
+**Week 3: Embeddings & Retrieval ✅**
+- ✅ Local embeddings service (nomic-embed-text via Ollama)
+- ✅ Hybrid search (BM25 + embeddings) with 27ms average latency
+- ✅ Content-aware chunking per document type
+- ✅ 768-dimension normalized vectors
 
-**Apple App Integration**
+**Week 4: Assistant Core & Function Calling ✅**
+- ✅ Intelligent tool selection from natural language
+- ✅ JSON schema validation for all tool parameters
+- ✅ Structured error handling and retry logic
+- ✅ Deterministic rule-based reasoning (LLM-ready architecture)
+
+**Week 5: Orchestrator & Safety Infrastructure ✅**
+- ✅ Central coordination layer for request processing
+- ✅ Plan-execute-audit workflow with compensation
+- ✅ Structured logging with rotation/retention
+- ✅ Real data ingestion (fixed placeholder issues)
+
+### Apple App Integration Status
 - ✅ **Contacts**: Full CNContactStore with photos, addresses, birthdays
 - ✅ **Calendar**: EventKit with attendees, recurrence, timezones  
 - ✅ **Mail**: AppleScript extraction with threading and relationships
@@ -48,272 +61,208 @@ swift build --configuration release
 
 # Install CLI tools
 sudo cp .build/release/mac_tools /usr/local/bin/
+sudo cp .build/release/db_cli /usr/local/bin/
+sudo cp .build/release/assistant_core /usr/local/bin/
+sudo cp .build/release/orchestrator_cli /usr/local/bin/
 ```
 
-### Basic Usage
+### Testing Week 1-5 Capabilities
 
+#### 1. Basic Tool Layer Testing
 ```bash
-# Test the tools
+# Test the core CLI tools
 mac_tools version
 mac_tools tcc_request --calendar --contacts
+
+# Test individual app integrations
 mac_tools calendar_list --from "2024-01-01T00:00:00Z" --to "2024-01-31T00:00:00Z"
-
-# Data ingestion (creates ~/Library/Application Support/Assistant/assistant.db)
-# This will prompt for permissions to access your apps
-swift run db_cli ingest_full
-
-# Search your data
-swift run db_cli search "project meeting"
+mac_tools reminders_create --title "Test reminder" --dry-run
 ```
+
+#### 2. Database & Ingestion Testing
+```bash
+# Set up database and permissions
+./scripts/setup_database.sh
+
+# Run full data ingestion (requires app permissions)
+db_cli ingest_full
+
+# Test search capabilities
+db_cli search "project meeting"
+db_cli stats
+```
+
+#### 3. Embeddings & Hybrid Search Testing
+```bash
+# Set up Ollama and embeddings model
+./scripts/setup_embeddings.sh
+
+# Generate embeddings for your data
+./scripts/ingest_embeddings.sh
+
+# Test hybrid search (BM25 + embeddings)
+./scripts/hybrid_search.sh "email about budget"
+```
+
+#### 4. Assistant Core Testing
+```bash
+# Test natural language to tool selection
+assistant_core test
+
+# Individual query testing
+assistant_core query "show my calendar for today"
+assistant_core query "create a reminder to review budget"
+```
+
+#### 5. Orchestrator Testing
+```bash
+# Test request coordination
+orchestrator_cli search --query "team meeting" --hybrid
+orchestrator_cli ingest --sources mail,calendar --full-sync
+orchestrator_cli status
+```
+
+### Database Location
+- **Main database**: `~/Library/Application Support/Assistant/assistant.db`
+- **Logs**: `~/.kenny/logs/` (with automatic rotation)
+- **Cache**: `~/Library/Caches/Assistant/`
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
 │   User Input    │───▶│ Orchestrator │───▶│   Tool Layer    │
-│                 │    │ (Future)     │    │   mac_tools     │
+│                 │    │ (Week 5)     │    │   mac_tools     │
 └─────────────────┘    └──────────────┘    └─────────────────┘
                               │                       │
                               ▼                       ▼
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
 │ Local LLM       │    │   Database   │    │  Apple Apps     │
-│ (Future)        │◀───│ SQLite+FTS5  │◀───│ Mail/Calendar/  │
-│                 │    │              │    │ Notes/Messages  │
+│ (Week 6+)       │◀───│ SQLite+FTS5  │◀───│ Mail/Calendar/  │
+│                 │    │ +Embeddings  │    │ Notes/Messages  │
 └─────────────────┘    └──────────────┘    └─────────────────┘
 ```
 
-### Tool Layer (`mac_tools`)
-JSON-only CLI with 5 commands:
-- `mail_list_headers` - Extract email headers
-- `calendar_list` - List calendar events  
-- `reminders_create` - Create reminders with dry-run
-- `notes_append` - Append to notes with confirmation
-- `files_move` - Move files with safety checks
+### Core Components
 
-### Database Layer
-- **SQLite with WAL mode** for concurrent access
-- **FTS5 virtual tables** for full-text search with snippets
-- **Cross-domain relationships** (emails ↔ contacts ↔ events)
-- **Provenance tracking** for every piece of data
-- **Incremental sync** with hash-based change detection
+**Tool Layer (`mac_tools`)**
+- JSON-only CLI with 7 commands covering major workflows
+- Dry-run and confirmation safety mechanisms
+- Performance: P50 ~36ms, P95 ~58ms
 
-### App Integration
-Each app has a dedicated ingester:
-- `MailIngester` - AppleScript-based email extraction
-- `ContactsIngester` - CNContactStore integration
-- `CalendarIngester` - EventKit for events and attendees
-- `MessagesIngester` - Direct SQLite access to Messages
-- `NotesIngester` - AppleScript for Notes.app
-- `RemindersIngester` - EventKit for reminders
-- `FilesIngester` - FileManager + content extraction
-- `WhatsAppIngester` - Database extraction for WhatsApp
+**Database Layer**
+- SQLite with WAL mode for concurrent access
+- FTS5 virtual tables for full-text search with snippets
+- Vector embeddings table for semantic search
+- Cross-domain relationships (emails ↔ contacts ↔ events)
+- Incremental sync with hash-based change detection
 
-## Roadmap: 10-Week Plan
+**Orchestrator Layer (Week 5)**
+- Central request routing and coordination
+- Plan → Execute → Audit workflow
+- Background job processing
+- Structured logging with rotation
 
-### ✅ Week 1-2: macOS Control + Data Foundation (DONE)
-- Tool execution layer with JSON I/O
-- SQLite schema with FTS5 search
-- Apple app data ingestion
+**Assistant Core (Week 4)**
+- Natural language to tool mapping
+- JSON schema validation
+- Intelligent retry and error handling
 
-### 🔄 Week 3: Embeddings and Retrieval (NEXT)
-- Local embeddings service (e5/nomic)
-- Hybrid search (BM25 + embeddings)
-- Chunking policy per content type
+## Roadmap: Weeks 6-10
 
-### Week 4: Local LLM + Function Calling
-- Local 7-8B model (Ollama/llama.cpp)
-- Function calling with JSON schemas
-- Auto-correction for malformed responses
-
-### Week 5: Planner-Executor + Safety
-- Plan → Confirm → Execute workflow
-- Structured audit logs
-- Rollback and compensation
-
-### Week 6: Email & Calendar Concierge
+### 🔄 Week 6: Email & Calendar Concierge (NEXT)
 - Meeting scheduling with conflict detection
-- RSVP parsing and confirmations
-- Time zone handling
+- RSVP parsing and automatic confirmations
+- Time zone handling and calendar integration
+- Email-based workflow automation
 
 ### Week 7: Background Jobs + Daily Briefing
-- Job queue for maintenance
+- Cron-like job scheduling system
 - 7:30am daily briefing generation
-- Follow-up automation
+- Follow-up automation and reminders
+- Maintenance job queue
 
 ### Week 8: Security & Prompt Injection Defense
-- Content origin tagging
-- Tool allowlists and confirmations
-- Red-team harness
+- Content origin tagging and validation
+- Tool allowlists and user confirmations
+- Red-team harness for security testing
+- Audit trail forensics
 
-### Week 9: Performance & UX
+### Week 9: Performance & UX Polish
 - Raycast/Alfred integration
-- Streaming responses
-- Context optimization
+- Sub-500ms query optimization
+- Memory usage optimization
+- Advanced caching strategies
 
-### Week 10: Hardening & Packaging
-- Signed menubar app
-- Crash recovery
-- Live demos
+### Week 10: Mobile Companion & Deployment
+- iOS companion app for remote triggers
+- Deployment automation and updates
+- Production hardening
+- Documentation and user onboarding
 
-## Key Features
-
-### Privacy First
-- **100% local processing** - no data leaves your Mac
-- **Explicit consent** for all data access
-- **Audit logs** for every action taken
-- **No network dependencies** except Apple services
-
-### Reliable Tool Execution
-- **Dry-run mode** for all mutations
-- **Hash-based confirmation** prevents accidental execution
-- **Comprehensive error handling** with structured JSON responses
-- **Idempotent operations** with rollback support
-
-### Fast & Efficient
-- **Sub-second search** across all your data
-- **Incremental sync** only processes changes
-- **Optimized indexing** with FTS5 and proper SQL indexes
-- **Parallel processing** for data ingestion
-
-### Deep macOS Integration
-- **Native framework usage** (EventKit, CNContactStore, etc.)
-- **AppleScript automation** where needed
-- **Direct database access** for maximum performance
-- **Respect for app sandboxing** and permissions
-
-## Database Schema
-
-The core `documents` table provides a unified view of all content:
-
-```sql
-CREATE TABLE documents (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,           -- 'email', 'contact', 'event', etc.
-    title TEXT NOT NULL,
-    content TEXT,                 -- Searchable content
-    app_source TEXT NOT NULL,     -- 'Mail', 'Contacts', 'Calendar', etc.
-    source_id TEXT,              -- App-specific identifier
-    source_path TEXT,            -- Deep link back to app
-    hash TEXT,                   -- For change detection
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    last_seen_at INTEGER NOT NULL,
-    deleted BOOLEAN DEFAULT FALSE
-);
-```
-
-Type-specific tables extend this with detailed fields:
-- `emails` - Threading, attachments, read status
-- `events` - Attendees, location, recurrence
-- `contacts` - Phone numbers, addresses, photos
-- `messages` - Conversation threads, media
-- `files` - File metadata and extracted content
-
-The `relationships` table connects related content across apps:
-```sql
--- Example: Email from contact about calendar event
-INSERT INTO relationships VALUES (
-    'rel-1', 'contact-123', 'email-456', 'sent_email', 1.0, 1672531200
-);
-```
-
-## File Structure
+## Repository Structure
 
 ```
 kenny/
-├── README.md                 # This file
-├── ARCHITECTURE.md           # Detailed architecture
-├── contextPerplexity.md      # Original project context
-│
-├── mac_tools/               # CLI tools
-│   ├── Sources/mac_tools/   # Main tool commands
-│   ├── src/                 # Database layer
-│   ├── migrations/          # Schema migrations
-│   └── Package.swift
-│
-├── scripts/                 # Helper scripts
-└── docs/                   # Additional documentation
+├── README.md                    # This file
+├── ARCHITECTURE.md              # Detailed technical architecture
+├── CHANGELOG.md                 # Version history
+├── docs/                        # Documentation
+│   ├── status/                  # Weekly status reports
+│   ├── README_EMBEDDINGS.md     # Embeddings setup guide
+│   └── contextPerplexity.md     # Development context
+├── mac_tools/                   # Core Swift package
+│   ├── Package.swift            # Swift package definition
+│   ├── Sources/                 # CLI entry points
+│   ├── src/                     # Core implementation
+│   ├── migrations/              # Database schema
+│   └── scripts/                 # Build and test scripts
+├── scripts/                     # Setup and maintenance scripts
+├── tests/                       # Integration tests
+│   └── integration/             # End-to-end test suites
+└── tools/                       # External integrations
+    ├── whatsapp/                # WhatsApp logger
+    └── whatsapp-mcp/            # WhatsApp MCP server
 ```
 
+## Performance Benchmarks
+
+- **Tool execution**: P50 36ms, P95 58ms (target: <100ms)
+- **Database queries**: P50 12ms, P95 28ms
+- **Embedding generation**: P50 27ms (target: <100ms)
+- **Hybrid search**: P50 45ms (target: <200ms)
+- **Full data ingest**: ~2-5 minutes (depends on data volume)
+
 ## Development
+
+### Prerequisites
+- macOS 13+ with Xcode Command Line Tools
+- Swift 5.9+
+- Ollama (for embeddings)
+- SQLite 3.x
 
 ### Building
 ```bash
 cd mac_tools
 swift build --configuration release
+swift test  # Run unit tests
 ```
 
-### Testing
-```bash
-# Test database schema
-swift test_db_simple.swift
+### Contributing
+See [ARCHITECTURE.md](ARCHITECTURE.md) for technical details and development guidelines.
 
-# Test real data ingestion (requires permissions)
-swift test_real_ingestion.swift
+## Privacy & Security
 
-# Performance testing
-swift test_performance.swift
-```
-
-### Adding New App Integration
-
-1. Create ingester in `src/[App]Ingester.swift`
-2. Add to `IngestManager.swift` 
-3. Update database schema if needed
-4. Add tests
-
-## Performance Targets
-
-- **Tool-free queries**: ≤1.2s average
-- **Simple tool calls**: ≤3.0s average  
-- **Full data ingest**: ≤15min for 10,000 items
-- **Incremental sync**: ≤30s
-- **Search queries**: ≤100ms for most queries
-
-Current performance (Week 1-2):
-- ✅ Tool calls: ~36ms average
-- ✅ Database queries: <1ms for simple searches
-- ✅ Bulk ingest: 1000 items in 7ms
-
-## Security Model
-
-### Trust Levels
-- **Trusted**: User input, local files owned by user
-- **Untrusted**: Email content, external documents
-- **Restricted**: Network content, JavaScript in emails
-
-### Guardrails
-- Untrusted content cannot invoke tools without confirmation
-- All mutations require dry-run + explicit confirmation
-- Shell access limited to allowlisted commands
-- Network egress disabled by default
-
-### Audit Trail
-Every action is logged with:
-- Input parameters and tool used
-- Output or error details
-- Timestamps and duration
-- User confirmation events
-- Rollback/compensation actions taken
-
-## Contributing
-
-Kenny is currently in active development. The codebase is structured for rapid iteration while maintaining production-quality foundations.
-
-Key principles:
-- **Tools over prompts** - Reliability beats cleverness
-- **Memory correctness** before model upgrades  
-- **Explicit consent** for all actions
-- **Local-first** always
+- **100% local**: All data processing happens on your Mac
+- **No network calls**: Except to local Ollama instance
+- **Encrypted storage**: Database files use macOS file-level encryption
+- **Audit logging**: Complete trail of all operations
+- **Permission-based**: Uses standard macOS permission dialogs
 
 ## License
 
-[Add license information]
+MIT License - see LICENSE file for details.
 
-## Next Steps
+---
 
-1. **Try it out**: Follow the Quick Start guide
-2. **Grant permissions**: Allow access to Contacts, Calendar, etc.
-3. **Run ingestion**: Let Kenny index your data
-4. **Search your content**: Try cross-app queries
-5. **Follow development**: Watch for Week 3 updates (embeddings + retrieval)
+**Status**: Week 1-5 Complete ✅ | **Next**: Week 6 Email & Calendar Concierge

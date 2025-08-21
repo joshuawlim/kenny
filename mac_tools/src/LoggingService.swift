@@ -55,7 +55,7 @@ public class LoggingService {
     }
     
     public func logAudit(_ event: String, userId: String = "system", details: [String: Any] = [:]) {
-        let metadata = [
+        let metadata: [String: Any] = [
             "event": event,
             "user_id": userId,
             "details": details

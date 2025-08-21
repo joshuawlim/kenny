@@ -61,7 +61,8 @@ let package = Package(
                 "PlanManager.swift",
                 "AuditLogger.swift",
                 "CompensationManager.swift",
-                "CLISafety.swift"
+                "CLISafety.swift",
+                "LoggingService.swift"
             ]
         ),
         .executableTarget(
