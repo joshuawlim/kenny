@@ -416,107 +416,143 @@ public class IngestManager {
         
         let request = CNContactFetchRequest(keysToFetch: keys)
         
-        print("DEBUG: Starting contact enumeration...")
-        var enumCount = 0
-        try contactStore.enumerateContacts(with: request) { contact, _ in
-            enumCount += 1
-            if enumCount <= 3 || enumCount % 100 == 0 {
-                print("DEBUG: Processing contact \(enumCount): \([contact.givenName, contact.familyName].compactMap{$0}.joined(separator: " "))")
-            }
-            let documentId = UUID().uuidString
-            let now = Int(Date().timeIntervalSince1970)
-            
-            let fullName = [contact.givenName, contact.middleName, contact.familyName]
-                .compactMap { $0?.isEmpty == false ? $0 : nil }
-                .joined(separator: " ")
-            
-            // Create searchable content from all contact fields
-            var contentParts: [String] = []
-            contentParts.append(contact.organizationName)
-            contentParts.append(contact.jobTitle)
-            contentParts.append(contact.note)
-            contentParts.append(contact.emailAddresses.map { $0.value as String }.joined(separator: " "))
-            contentParts.append(contact.phoneNumbers.map { $0.value.stringValue }.joined(separator: " "))
-            
-            let content = contentParts.compactMap { $0.isEmpty == false ? $0 : nil }.joined(separator: " ")
-            
-            let docData: [String: Any] = [
-                "id": documentId,
-                "type": "contact",
-                "title": fullName.isEmpty ? "Unnamed Contact" : fullName,
-                "content": content,
-                "app_source": "Contacts",
-                "source_id": contact.identifier,
-                "source_path": "addressbook://\(contact.identifier)",
-                "hash": "\(fullName)\(contact.organizationName)\(contact.jobTitle)\(now)".sha256(),
-                "created_at": now,
-                "updated_at": now,
-                "last_seen_at": now,
-                "deleted": false
-            ]
-            
-            if self.database.insert("documents", data: docData) {
-                let emails = contact.emailAddresses.map { ["label": $0.label ?? "", "value": $0.value as String] }
-                let phones = contact.phoneNumbers.map { ["label": $0.label ?? "", "value": $0.value.stringValue] }
-                let addresses = contact.postalAddresses.map { addr in
-                    let postal = addr.value
-                    return [
-                        "label": addr.label ?? "",
-                        "street": postal.street,
-                        "city": postal.city,
-                        "state": postal.state,
-                        "postal_code": postal.postalCode,
-                        "country": postal.country
-                    ]
-                }
-                
-                var birthday: Int? = nil
-                if let bday = contact.birthday {
-                    let calendar = Calendar.current
-                    if let year = bday.year, year != NSDateComponentUndefined {
-                        let dateComponents = DateComponents(year: year, month: bday.month, day: bday.day)
-                        birthday = Int(calendar.date(from: dateComponents)?.timeIntervalSince1970 ?? 0)
-                    }
-                }
-                
-                let contactData: [String: Any] = [
-                    "document_id": documentId,
-                    "first_name": contact.givenName,
-                    "last_name": contact.familyName,
-                    "full_name": fullName,
-                    "company": contact.organizationName,
-                    "job_title": contact.jobTitle,
-                    "emails": (try? JSONEncoder().encode(emails))?.base64EncodedString() ?? NSNull(),
-                    "phone_numbers": (try? JSONEncoder().encode(phones))?.base64EncodedString() ?? NSNull(),
-                    "addresses": (try? JSONEncoder().encode(addresses))?.base64EncodedString() ?? NSNull(),
-                    "birthday": birthday ?? NSNull(),
-                    "notes": contact.note,
-                    "image_path": contact.imageData != nil ? "contact_image_\(contact.identifier)" : NSNull()
-                ]
-                
-                if self.database.insert("contacts", data: contactData) {
-                    stats.itemsCreated += 1
-                    
-                    // Save contact image if available
-                    if let imageData = contact.imageData {
-                        let imagePath = "\(NSHomeDirectory())/Library/Application Support/Assistant/contact_images/\(contact.identifier).jpg"
-                        let imageDir = URL(fileURLWithPath: imagePath).deletingLastPathComponent()
-                        try? FileManager.default.createDirectory(at: imageDir, withIntermediateDirectories: true)
-                        try? imageData.write(to: URL(fileURLWithPath: imagePath))
-                    }
-                } else {
-                    stats.errors += 1
-                }
-            } else {
-                stats.errors += 1
-            }
-            
-            stats.itemsProcessed += 1
+        print("DEBUG: Starting contact enumeration with async wrapper...")
+        
+        // For full sync, clear existing Contacts data to prevent unique constraint failures
+        if isFullSync {
+            print("DEBUG: Clearing existing Contacts data for full sync...")
+            let deletedDocs = database.query("DELETE FROM documents WHERE app_source = 'Contacts'")
+            let deletedContacts = database.query("DELETE FROM contacts")
+            print("DEBUG: Cleared existing Contacts data")
         }
         
-        print("DEBUG: Enumeration complete. Enumerated \(enumCount) contacts")
-        print("Contacts ingest: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
-        return stats
+        // Wrap enumeration in proper async pattern to keep runloop alive
+        return try await withCheckedThrowingContinuation { continuation in
+            var enumCount = 0
+            var hasResumed = false
+            
+            DispatchQueue.global().async {
+                do {
+                    try self.contactStore.enumerateContacts(with: request) { contact, stopPointer in
+                        enumCount += 1
+                        if enumCount <= 3 || enumCount % 100 == 0 {
+                            print("DEBUG: Processing contact \(enumCount): \([contact.givenName, contact.familyName].compactMap{$0}.joined(separator: " "))")
+                        }
+                        
+                        let documentId = UUID().uuidString
+                        let now = Int(Date().timeIntervalSince1970)
+                        
+                        let fullName = [contact.givenName, contact.middleName, contact.familyName]
+                            .compactMap { $0?.isEmpty == false ? $0 : nil }
+                            .joined(separator: " ")
+                        
+                        // Create searchable content from all contact fields
+                        var contentParts: [String] = []
+                        contentParts.append(contact.organizationName)
+                        contentParts.append(contact.jobTitle)
+                        contentParts.append(contact.note)
+                        contentParts.append(contact.emailAddresses.map { $0.value as String }.joined(separator: " "))
+                        contentParts.append(contact.phoneNumbers.map { $0.value.stringValue }.joined(separator: " "))
+                        
+                        let content = contentParts.compactMap { $0.isEmpty == false ? $0 : nil }.joined(separator: " ")
+                        
+                        let docData: [String: Any] = [
+                            "id": documentId,
+                            "type": "contact",
+                            "title": fullName.isEmpty ? "Unnamed Contact" : fullName,
+                            "content": content,
+                            "app_source": "Contacts",
+                            "source_id": contact.identifier,
+                            "source_path": "addressbook://\(contact.identifier)",
+                            "hash": "\(fullName)\(contact.organizationName)\(contact.jobTitle)\(now)".sha256(),
+                            "created_at": now,
+                            "updated_at": now,
+                            "last_seen_at": now,
+                            "deleted": false
+                        ]
+                        
+                        if self.database.insert("documents", data: docData) {
+                            let emails = contact.emailAddresses.map { ["label": $0.label ?? "", "value": $0.value as String] }
+                            let phones = contact.phoneNumbers.map { ["label": $0.label ?? "", "value": $0.value.stringValue] }
+                            let addresses = contact.postalAddresses.map { addr in
+                                let postal = addr.value
+                                return [
+                                    "label": addr.label ?? "",
+                                    "street": postal.street,
+                                    "city": postal.city,
+                                    "state": postal.state,
+                                    "postal_code": postal.postalCode,
+                                    "country": postal.country
+                                ]
+                            }
+                            
+                            var birthday: Int? = nil
+                            if let bday = contact.birthday {
+                                let calendar = Calendar.current
+                                if let year = bday.year, year != NSDateComponentUndefined {
+                                    let dateComponents = DateComponents(year: year, month: bday.month, day: bday.day)
+                                    birthday = Int(calendar.date(from: dateComponents)?.timeIntervalSince1970 ?? 0)
+                                }
+                            }
+                            
+                            let contactData: [String: Any] = [
+                                "document_id": documentId,
+                                "first_name": contact.givenName,
+                                "last_name": contact.familyName,
+                                "full_name": fullName,
+                                "company": contact.organizationName,
+                                "job_title": contact.jobTitle,
+                                "emails": (try? JSONEncoder().encode(emails))?.base64EncodedString() ?? NSNull(),
+                                "phone_numbers": (try? JSONEncoder().encode(phones))?.base64EncodedString() ?? NSNull(),
+                                "addresses": (try? JSONEncoder().encode(addresses))?.base64EncodedString() ?? NSNull(),
+                                "birthday": birthday ?? NSNull(),
+                                "notes": contact.note,
+                                "image_path": contact.imageData != nil ? "contact_image_\(contact.identifier)" : NSNull()
+                            ]
+                            
+                            if self.database.insert("contacts", data: contactData) {
+                                stats.itemsCreated += 1
+                                
+                                // Save contact image if available
+                                if let imageData = contact.imageData {
+                                    let imagePath = "\(NSHomeDirectory())/Library/Application Support/Assistant/contact_images/\(contact.identifier).jpg"
+                                    let imageDir = URL(fileURLWithPath: imagePath).deletingLastPathComponent()
+                                    try? FileManager.default.createDirectory(at: imageDir, withIntermediateDirectories: true)
+                                    try? imageData.write(to: URL(fileURLWithPath: imagePath))
+                                }
+                            } else {
+                                stats.errors += 1
+                            }
+                        } else {
+                            stats.errors += 1
+                        }
+                        
+                        stats.itemsProcessed += 1
+                    }
+                    
+                    print("DEBUG: Enumeration complete. Enumerated \(enumCount) contacts")
+                    print("Contacts ingest: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
+                    
+                    // Resume continuation on main queue to avoid race conditions
+                    DispatchQueue.main.async {
+                        if !hasResumed {
+                            hasResumed = true
+                            continuation.resume(returning: stats)
+                        }
+                    }
+                    
+                } catch {
+                    print("DEBUG: Contact enumeration failed: \(error)")
+                    stats.errors += 1
+                    DispatchQueue.main.async {
+                        if !hasResumed {
+                            hasResumed = true
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Helper Methods

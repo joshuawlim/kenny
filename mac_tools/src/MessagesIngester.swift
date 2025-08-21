@@ -11,6 +11,7 @@ class MessagesIngester {
     
     func ingestMessages(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "messages")
+        print("DEBUG: Starting Messages ingestion...")
         
         // Find Messages database path
         guard let messagesDBPath = findMessagesDatabase() else {
@@ -18,23 +19,63 @@ class MessagesIngester {
             return stats
         }
         
-        print("Found Messages database at: \(messagesDBPath)")
+        print("DEBUG: Found Messages database at: \(messagesDBPath)")
+        
+        // Check database file info
+        let attrs = try? FileManager.default.attributesOfItem(atPath: messagesDBPath)
+        let size = (attrs?[.size] as? Int64 ?? 0) / 1024 / 1024
+        print("DEBUG: Database size: \(size) MB")
         
         // Open Messages database
         guard openMessagesDatabase(path: messagesDBPath) else {
+            print("DEBUG: Failed to open Messages database")
             throw IngestError.dataCorruption
         }
         defer { closeMessagesDatabase() }
         
-        // Query messages
-        let messages = try queryMessages(isFullSync: isFullSync, since: since)
-        print("Found \(messages.count) messages to process")
+        print("DEBUG: Successfully opened Messages database")
         
-        for messageData in messages {
-            await processMessageData(messageData, stats: &stats)
+        // For full sync, clear existing Messages data to prevent unique constraint failures
+        if isFullSync {
+            print("DEBUG: Clearing existing Messages data for full sync...")
+            let deletedDocs = database.query("DELETE FROM documents WHERE app_source = 'Messages'")
+            let deletedMsgs = database.query("DELETE FROM messages")
+            print("DEBUG: Cleared existing Messages data")
         }
         
-        print("Messages ingest: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
+        // Query messages with detailed logging
+        let messages = try queryMessages(isFullSync: isFullSync, since: since)
+        print("DEBUG: Found \(messages.count) messages to process (isFullSync: \(isFullSync))")
+        
+        if messages.isEmpty {
+            print("DEBUG: No messages returned from query - checking filters...")
+            if let since = since {
+                print("DEBUG: Since filter: \(since)")
+            }
+        }
+        
+        // Process messages with batching to prevent runloop timeout
+        let batchSize = 100
+        var processedCount = 0
+        
+        for i in stride(from: 0, to: messages.count, by: batchSize) {
+            let end = min(i + batchSize, messages.count)
+            let batch = Array(messages[i..<end])
+            
+            print("DEBUG: Processing batch \(i/batchSize + 1): messages \(i+1) to \(end)")
+            
+            for messageData in batch {
+                await processMessageData(messageData, stats: &stats)
+                processedCount += 1
+            }
+            
+            // Brief pause to prevent overwhelming the system
+            if batch.count == batchSize {
+                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            }
+        }
+        
+        print("DEBUG: Messages ingest complete: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
         return stats
     }
     
@@ -60,6 +101,10 @@ class MessagesIngester {
             print("Failed to open Messages database: \(result)")
             return false
         }
+        
+        // Set busy timeout for WAL mode concurrency
+        sqlite3_busy_timeout(messagesDB, 10000) // 10 seconds
+        
         return true
     }
     
@@ -79,6 +124,9 @@ class MessagesIngester {
         }
         let limit = isFullSync ? 30000 : 1000 // Increase limits to handle real data volumes
         
+        print("DEBUG: Query parameters - sinceTimestamp: \(sinceTimestamp), limit: \(limit)")
+        print("DEBUG: Since date: \(since?.description ?? "nil")")
+        
         // Messages database schema (simplified):
         // message: ROWID, guid, text, handle_id, service, account, date, is_from_me, is_read
         // handle: ROWID, id (phone/email)
@@ -90,6 +138,7 @@ class MessagesIngester {
                 m.ROWID as message_id,
                 m.guid,
                 m.text,
+                m.attributedBody,
                 m.service,
                 m.account,
                 m.date,
@@ -97,6 +146,7 @@ class MessagesIngester {
                 m.is_read,
                 m.is_delivered,
                 m.is_finished,
+                m.associated_message_type,
                 h.id as handle_id,
                 c.chat_identifier,
                 c.display_name as chat_name,
@@ -105,7 +155,7 @@ class MessagesIngester {
             LEFT JOIN handle h ON m.handle_id = h.ROWID
             LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             LEFT JOIN chat c ON cmj.chat_id = c.ROWID
-            WHERE m.date > ? 
+            WHERE m.date > ? AND m.associated_message_type = 0
             ORDER BY m.date DESC 
             LIMIT ?
         """
@@ -113,16 +163,26 @@ class MessagesIngester {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         
+        print("DEBUG: Preparing SQL query...")
         guard sqlite3_prepare_v2(messagesDB, query, -1, &statement, nil) == SQLITE_OK else {
+            let error = String(cString: sqlite3_errmsg(messagesDB))
+            print("DEBUG: SQL prepare failed: \(error)")
             throw IngestError.dataCorruption
         }
         
+        print("DEBUG: Binding parameters...")
         sqlite3_bind_double(statement, 1, sinceTimestamp)
         sqlite3_bind_int(statement, 2, Int32(limit))
         
         var messages: [[String: Any]] = []
+        var rowCount = 0
         
+        print("DEBUG: Executing query...")
         while sqlite3_step(statement) == SQLITE_ROW {
+            rowCount += 1
+            if rowCount <= 3 || rowCount % 1000 == 0 {
+                print("DEBUG: Processing message row \(rowCount)")
+            }
             var messageData: [String: Any] = [:]
             
             // Extract all columns
@@ -147,6 +207,7 @@ class MessagesIngester {
             messages.append(messageData)
         }
         
+        print("DEBUG: Query complete. Found \(messages.count) messages (processed \(rowCount) rows)")
         return messages
     }
     
@@ -154,12 +215,19 @@ class MessagesIngester {
         let documentId = UUID().uuidString
         let now = Int(Date().timeIntervalSince1970)
         
-        let text = messageData["text"] as? String ?? ""
+        // Use attributedBody if available, fallback to text
+        let textContent = messageData["attributedBody"] as? String ?? messageData["text"] as? String ?? ""
         let guid = messageData["guid"] as? String ?? UUID().uuidString
         let handleId = messageData["handle_id"] as? String ?? ""
         let service = messageData["service"] as? String ?? "unknown"
         let chatName = messageData["chat_name"] as? String
         let isFromMe = (messageData["is_from_me"] as? Int64) == 1
+        
+        // Skip empty messages
+        if textContent.isEmpty {
+            stats.itemsProcessed += 1
+            return
+        }
         
         // Convert Messages timestamp (nanoseconds since 2001) to Unix timestamp  
         let messagesDate = messageData["date"] as? Double ?? 0
@@ -167,7 +235,7 @@ class MessagesIngester {
         
         // Create searchable content
         var contentParts: [String] = []
-        contentParts.append(text)
+        contentParts.append(textContent)
         if let chatName = chatName, !chatName.isEmpty {
             contentParts.append("Chat: \(chatName)")
         }
@@ -187,7 +255,7 @@ class MessagesIngester {
             "app_source": "Messages",
             "source_id": guid,
             "source_path": "sms:conversation/\(threadId)",
-            "hash": "\(guid)\(text)".sha256(),
+            "hash": "\(guid)\(textContent)".sha256(),
             "created_at": unixTimestamp,
             "updated_at": unixTimestamp,
             "last_seen_at": now,
