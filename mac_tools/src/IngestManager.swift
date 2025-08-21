@@ -394,10 +394,13 @@ public class IngestManager {
     
     func ingestContacts(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "contacts")
+        print("DEBUG: Starting Contacts ingestion...")
         
         // Request contacts access
         let status = CNContactStore.authorizationStatus(for: .contacts)
+        print("DEBUG: Contacts permission status: \(status.rawValue)")
         if status != .authorized {
+            print("DEBUG: Requesting contacts access...")
             try await requestContactsAccess()
         }
         
@@ -413,7 +416,13 @@ public class IngestManager {
         
         let request = CNContactFetchRequest(keysToFetch: keys)
         
+        print("DEBUG: Starting contact enumeration...")
+        var enumCount = 0
         try contactStore.enumerateContacts(with: request) { contact, _ in
+            enumCount += 1
+            if enumCount <= 3 || enumCount % 100 == 0 {
+                print("DEBUG: Processing contact \(enumCount): \([contact.givenName, contact.familyName].compactMap{$0}.joined(separator: " "))")
+            }
             let documentId = UUID().uuidString
             let now = Int(Date().timeIntervalSince1970)
             
@@ -505,6 +514,7 @@ public class IngestManager {
             stats.itemsProcessed += 1
         }
         
+        print("DEBUG: Enumeration complete. Enumerated \(enumCount) contacts")
         print("Contacts ingest: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
         return stats
     }
@@ -514,9 +524,11 @@ public class IngestManager {
     // Safely run an ingester function, catching errors to prevent one failure from stopping others
     private func safeIngest(_ ingester: () async throws -> IngestStats) async -> IngestStats {
         do {
-            return try await ingester()
+            let result = try await ingester()
+            print("DEBUG: Ingester completed with \(result.itemsCreated) items created, \(result.errors) errors")
+            return result
         } catch {
-            print("⚠️  Ingester failed: \(error.localizedDescription)")
+            print("⚠️  Ingester failed: \(error)")
             var errorStats = IngestStats()
             errorStats.errors = 1
             return errorStats

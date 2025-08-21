@@ -71,13 +71,13 @@ class MessagesIngester {
     }
     
     private func queryMessages(isFullSync: Bool, since: Date?) throws -> [[String: Any]] {
-        // Messages uses 2001 epoch (978307200 seconds before Unix epoch)
+        // Messages uses nanoseconds since 2001 epoch (978307200 seconds before Unix epoch)
         let sinceTimestamp = if let since = since {
-            since.timeIntervalSince1970 - 978307200
+            (since.timeIntervalSince1970 - 978307200) * 1_000_000_000 // Convert to nanoseconds
         } else {
             0.0 // For full sync, start from beginning
         }
-        let limit = isFullSync ? 5000 : 200 // Increase limit for full sync to get more real data
+        let limit = isFullSync ? 30000 : 1000 // Increase limits to handle real data volumes
         
         // Messages database schema (simplified):
         // message: ROWID, guid, text, handle_id, service, account, date, is_from_me, is_read
@@ -161,9 +161,9 @@ class MessagesIngester {
         let chatName = messageData["chat_name"] as? String
         let isFromMe = (messageData["is_from_me"] as? Int64) == 1
         
-        // Convert Messages timestamp (seconds since 2001) to Unix timestamp
-        let messagesDate = messageData["date"] as? Int64 ?? 0
-        let unixTimestamp = Int(messagesDate) + 978307200 // Seconds between 1970 and 2001
+        // Convert Messages timestamp (nanoseconds since 2001) to Unix timestamp  
+        let messagesDate = messageData["date"] as? Double ?? 0
+        let unixTimestamp = Int(messagesDate / 1_000_000_000) + 978307200 // Convert nanoseconds to seconds, then add epoch offset
         
         // Create searchable content
         var contentParts: [String] = []
