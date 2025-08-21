@@ -18,19 +18,17 @@ public class IngestManager {
         
         var stats = IngestStats()
         
-        // Ingest all data sources in parallel where possible
-        async let mailStats = ingestMail(isFullSync: true)
-        async let eventStats = ingestCalendar(isFullSync: true) 
-        async let reminderStats = ingestReminders(isFullSync: true)
-        async let noteStats = ingestNotes(isFullSync: true)
-        async let fileStats = ingestFiles(isFullSync: true)
-        async let messageStats = ingestMessages(isFullSync: true)
-        async let contactStats = ingestContacts(isFullSync: true)
+        // Ingest all data sources in parallel with individual error handling
+        async let mailStats = safeIngest { try await ingestMail(isFullSync: true) }
+        async let eventStats = safeIngest { try await ingestCalendar(isFullSync: true) }
+        async let reminderStats = safeIngest { try await ingestReminders(isFullSync: true) }
+        async let noteStats = safeIngest { try await ingestNotes(isFullSync: true) }
+        async let fileStats = safeIngest { try await ingestFiles(isFullSync: true) }
+        async let messageStats = safeIngest { try await ingestMessages(isFullSync: true) }
+        async let contactStats = safeIngest { try await ingestContacts(isFullSync: true) }
+        async let whatsappStats = safeIngest { try await ingestWhatsApp(isFullSync: true) }
         
-        // Wait for all ingests to complete
-        async let whatsappStats = ingestWhatsApp(isFullSync: true)
-        
-        let results = try await [
+        let results = await [
             mailStats, eventStats, reminderStats, 
             noteStats, fileStats, messageStats, contactStats, whatsappStats
         ]
@@ -512,6 +510,19 @@ public class IngestManager {
     }
     
     // MARK: - Helper Methods
+    
+    // Safely run an ingester function, catching errors to prevent one failure from stopping others
+    private func safeIngest(_ ingester: () async throws -> IngestStats) async -> IngestStats {
+        do {
+            return try await ingester()
+        } catch {
+            print("⚠️  Ingester failed: \(error.localizedDescription)")
+            var errorStats = IngestStats()
+            errorStats.errors = 1
+            return errorStats
+        }
+    }
+    
     private func requestCalendarAccess() async throws {
         // Use modern API for macOS 14+ if available
         if #available(macOS 14.0, iOS 17.0, *) {
