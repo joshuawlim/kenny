@@ -71,8 +71,13 @@ class MessagesIngester {
     }
     
     private func queryMessages(isFullSync: Bool, since: Date?) throws -> [[String: Any]] {
-        let sinceTimestamp = (since?.timeIntervalSince1970 ?? 0) - 978307200 // Convert to 2001 epoch (Messages uses 2001)
-        let limit = isFullSync ? 1000 : 200
+        // Messages uses 2001 epoch (978307200 seconds before Unix epoch)
+        let sinceTimestamp = if let since = since {
+            since.timeIntervalSince1970 - 978307200
+        } else {
+            0.0 // For full sync, start from beginning
+        }
+        let limit = isFullSync ? 5000 : 200 // Increase limit for full sync to get more real data
         
         // Messages database schema (simplified):
         // message: ROWID, guid, text, handle_id, service, account, date, is_from_me, is_read

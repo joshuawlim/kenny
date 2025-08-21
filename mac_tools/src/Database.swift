@@ -321,11 +321,40 @@ public class Database {
             END;
             """
             
+                    print("Attempting to create basic schema...")
+                    print("Database path: \(dbPath)")
+                    
                     if execute(basicSchema) {
                         updateSchemaVersion(1)
                         print("Basic schema created successfully")
                     } else {
-                        fatalError("Failed to create basic schema")
+                        print("CRITICAL: Basic schema creation failed")
+                        print("Database error: \(String(cString: sqlite3_errmsg(db)))")
+                        print("Database path: \(dbPath)")
+                        
+                        // Try to provide recovery instead of fatal error
+                        print("Attempting recovery by creating minimal schema...")
+                        let minimalSchema = """
+                        CREATE TABLE IF NOT EXISTS documents (
+                            id TEXT PRIMARY KEY,
+                            type TEXT NOT NULL,
+                            title TEXT,
+                            content TEXT,
+                            app_source TEXT,
+                            source_id TEXT,
+                            created_at INTEGER,
+                            updated_at INTEGER,
+                            last_seen_at INTEGER,
+                            deleted BOOLEAN DEFAULT FALSE
+                        );
+                        """
+                        
+                        if execute(minimalSchema) {
+                            print("Minimal schema created successfully")
+                            updateSchemaVersion(1)
+                        } else {
+                            fatalError("Failed to create even minimal schema - database may be corrupted or inaccessible")
+                        }
                     }
                 } else {
                     print("Warning: Could not find migration for version \(version)")

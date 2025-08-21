@@ -157,6 +157,111 @@ kenny/
 - Semantic queries work ("find emails about the Q4 planning meeting")
 - Performance maintained (<1.2s for enhanced search)
 
+## [Week 5] - 2025-08-21
+
+### 🚨 CRITICAL ISSUES DISCOVERED - Week 5 Validation
+
+During comprehensive testing of Week 1-5 capabilities with real user data, critical failures were discovered in the ingestion and search systems that render the assistant largely non-functional.
+
+### ❌ Critical Failures Identified
+
+**Data Ingestion Completely Broken:**
+- **Expected**: 5,495+ emails, 30,102+ messages, hundreds of contacts, files, notes, reminders
+- **Actual**: 0 emails, 19 messages, 1 event, 0 contacts, 0 files, 0 notes, 0 reminders
+- **Root Cause**: Date filtering bug in Messages ingester causing `sinceTimestamp = -978307200` (negative timestamp excludes all recent data)
+- **Impact**: System has virtually no real user data to work with
+
+**Search System Returns Zero Results:**
+- **Expected**: Find "Courtney", "Mrs Jacobs", "spa" from visible user data
+- **Actual**: All searches return 0 results despite data in database  
+- **Root Cause**: Documents inserted with empty titles/content fields, making FTS5 search ineffective
+- **Impact**: Assistant cannot retrieve any information
+
+**Database Schema Migration Failures:**
+- **Issue**: "Failed to create basic schema" fatal error prevents testing fixes
+- **Impact**: Cannot validate ingestion fixes or restart with clean database
+
+### 🔧 Fixes Implemented (Untested)
+
+**Messages Ingester Date Filter Fix:**
+```swift
+// OLD (BROKEN):
+let sinceTimestamp = (since?.timeIntervalSince1970 ?? 0) - 978307200 // Creates negative timestamp
+
+// NEW (FIXED):  
+let sinceTimestamp = if let since = since {
+    since.timeIntervalSince1970 - 978307200
+} else {
+    0.0 // For full sync, start from beginning
+}
+```
+
+**Increased Data Limits:**
+- Messages ingester: Limit increased from 1000 → 5000 for full sync
+- Similar fixes needed for Mail, Contacts, Files, Notes, Reminders ingesters
+
+### 🎯 Data Sources Validated Available
+
+**Confirmed Real Data Exists:**
+- **Messages Database**: 30,102 messages at `~/Library/Messages/chat.db` with recent content ("Ok", "They will only come at 3", "I don't think so")
+- **Mail Database**: 5,495+ emails visible in user's Mail.app 
+- **WhatsApp/iMessage**: Dozens of active conversations visible in screenshots
+- **Contacts**: Multiple contacts including "Courtney", "Mrs Jacobs" visible in user data
+
+### 📊 Week 5 Status: BLOCKED ❌
+
+**Critical Path Blockers:**
+1. **Database migration system broken** - Cannot test fixes
+2. **Ingestion system fundamentally broken** - No real data flowing through
+3. **Search returns zero results** - Assistant cannot retrieve information
+4. **Week 6+ orchestration cannot proceed** without functional data layer
+
+### 🛠️ Required Fixes Before Week 6
+
+**Priority 1 - Database System:**
+- Fix schema migration failures
+- Restore working database state
+- Test database operations end-to-end
+
+**Priority 2 - Data Ingestion:**  
+- Apply date filter fixes to all ingesters (Mail, Contacts, Files, Notes, Reminders)
+- Remove artificial limits in AppleScript-based ingesters
+- Test with real user data (targeting thousands of items vs. dozens)
+
+**Priority 3 - Search Validation:**
+- Verify documents have proper titles/content after ingestion fixes
+- Test FTS5 search returns results for real user queries ("Courtney", "spa", "Mrs Jacobs")
+- Validate search performance with realistic data volumes
+
+**Priority 4 - End-to-End Validation:**
+- Confirm ingestion of 1000+ real messages, 1000+ emails, 100+ contacts
+- Verify search works with user data from screenshots  
+- Test orchestrator can retrieve and process real information
+
+### ⚠️ Architecture Impact
+
+**Weeks 1-4 Claims Invalid:**
+- Previous testing used synthetic/limited data that masked critical failures
+- Real-world data validation reveals fundamental system broken
+- Performance benchmarks meaningless without real data loads
+
+**Week 6+ Roadmap at Risk:**
+- Email & Calendar Concierge cannot function without working ingestion
+- LLM integration useless without searchable data
+- All downstream features dependent on data layer working
+
+### 📋 Testing Protocol Updated
+
+**New Requirements:**
+- All ingestion testing must use real user data volumes (1000s of items)
+- Search testing must validate against actual user queries and content
+- Performance testing must reflect realistic data loads
+- No week can be considered complete without end-to-end validation
+
+---
+
+*Week 5 validation revealed that Kenny's foundation requires significant repairs before Week 6+ features can be built. Focus shifts to fixing core data ingestion and search before proceeding with orchestration layer.*
+
 ---
 
 *Kenny is following a strict 10-week roadmap with weekly deliverables and measurable acceptance criteria. Each week builds incrementally toward a production-ready personal AI assistant.*

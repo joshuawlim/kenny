@@ -44,8 +44,8 @@ class MailIngester {
             ""
         }
         
-        // Limit to recent messages for performance
-        let messageLimit = isFullSync ? "500" : "100"
+        // Increase limits for real data ingestion 
+        let messageLimit = isFullSync ? "5000" : "500"  // Match user's data volume
         
         return """
         tell application "Mail"

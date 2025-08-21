@@ -11,43 +11,66 @@ Kenny is designed to be your personal AI assistant that:
 - Maintains **strict privacy** - all data stays on your device
 - Delivers **fast responses** (≤1.2s for queries, ≤3s for tool calls)
 
-## Current Status: Week 1-5 Foundation ✅
+## Current Status: Week 5 CRITICAL ISSUES ❌
 
-### What's Working Now (August 2024)
+### 🚨 CRITICAL ISSUES DISCOVERED (August 21, 2025)
 
-**Week 1-2: macOS Tool Layer & Data Foundation ✅**
+During Week 5 validation with real user data, fundamental system failures were discovered:
+
+**❌ Data Ingestion Completely Broken:**
+- Expected: 5,495+ emails, 30,102+ messages, hundreds of contacts
+- Actual: 0 emails, 19 messages, 1 event, 0 contacts, 0 files
+- Root Cause: Date filtering bugs exclude all recent data
+
+**❌ Search System Non-Functional:**
+- All searches return 0 results despite data in database
+- Cannot find "Courtney", "Mrs Jacobs", "spa" from visible user data
+- Root Cause: Documents created with empty titles/content
+
+**❌ Database Migration Failures:**
+- "Failed to create basic schema" prevents testing fixes
+- System cannot restart with clean database
+
+### What Was Claimed Working (Now Invalid)
+
+**Week 1-2: macOS Tool Layer & Data Foundation ❌**
 - ✅ JSON-only CLI commands with dry-run/confirm workflow
-- ✅ SQLite + FTS5 database with cross-app relationships
-- ✅ Full Apple app data extraction (8 apps) with incremental sync
-- ✅ Performance: P50 ~36ms (well under targets)
+- ❌ SQLite + FTS5 database (schema migrations broken)
+- ❌ Full Apple app data extraction (ingesters broken)
+- ❌ Performance claims invalid (tested with minimal/synthetic data)
 
-**Week 3: Embeddings & Retrieval ✅**
+**Week 3: Embeddings & Retrieval ❌**
 - ✅ Local embeddings service (nomic-embed-text via Ollama)
-- ✅ Hybrid search (BM25 + embeddings) with 27ms average latency
-- ✅ Content-aware chunking per document type
-- ✅ 768-dimension normalized vectors
+- ❌ Hybrid search meaningless without data ingestion
+- ❌ Content-aware chunking not tested with real data
+- ❌ Vector processing irrelevant without searchable content
 
-**Week 4: Assistant Core & Function Calling ✅**
-- ✅ Intelligent tool selection from natural language
-- ✅ JSON schema validation for all tool parameters
-- ✅ Structured error handling and retry logic
-- ✅ Deterministic rule-based reasoning (LLM-ready architecture)
+**Week 4: Assistant Core & Function Calling ❌**
+- ✅ Tool selection logic exists
+- ❌ Cannot test with real data due to ingestion failures
+- ❌ Error handling untested in real scenarios
+- ❌ Architecture unusable without data layer
 
-**Week 5: Orchestrator & Safety Infrastructure ✅**
-- ✅ Central coordination layer for request processing
-- ✅ Plan-execute-audit workflow with compensation
-- ✅ Structured logging with rotation/retention
-- ✅ Real data ingestion (fixed placeholder issues)
+**Week 5: Orchestrator & Safety Infrastructure ❌**
+- ❌ Cannot orchestrate without functional data retrieval
+- ❌ Plan-execute workflow untested with real data
+- ❌ Real data ingestion completely broken
 
-### Apple App Integration Status
-- ✅ **Contacts**: Full CNContactStore with photos, addresses, birthdays
-- ✅ **Calendar**: EventKit with attendees, recurrence, timezones  
-- ✅ **Mail**: AppleScript extraction with threading and relationships
-- ✅ **Messages**: Direct SQLite access to iMessage/SMS history
-- ✅ **Files**: Content indexing for Documents/Desktop/Downloads
-- ✅ **Notes**: AppleScript extraction with email detection
-- ✅ **Reminders**: EventKit with due dates and completion status
-- ✅ **WhatsApp**: Database extraction for chat history
+### Apple App Integration Status (Actual)
+- ❌ **Contacts**: Ingester finds 0 contacts (should be dozens)
+- ❌ **Calendar**: Only 1 event ingested (should be many more)
+- ❌ **Mail**: 0 emails ingested (user has 5,495+ emails visible)
+- ❌ **Messages**: 19 messages ingested (should be 30,102+)
+- ❌ **Files**: 0 files ingested (should be hundreds)
+- ❌ **Notes**: 0 notes ingested
+- ❌ **Reminders**: 0 reminders ingested
+- ❌ **WhatsApp**: Creating empty records instead of real chat data
+
+### Real Data Available (Confirmed)
+- **Messages Database**: 30,102 messages at `~/Library/Messages/chat.db`
+- **Mail App**: 5,495+ emails visible in Primary inbox
+- **Contacts**: "Courtney", "Mrs Jacobs" and others visible in screenshots
+- **WhatsApp/iMessage**: Active conversations with family groups visible
 
 ## Quick Start
 
@@ -81,22 +104,25 @@ mac_tools/.build/release/mac_tools reminders_create --title "Test reminder" --dr
 mac_tools/.build/release/mac_tools tcc_request --calendar --reminders  # Request permissions first
 ```
 
-#### 2. Database & Ingestion Testing
+#### 2. Database & Ingestion Testing ❌ BROKEN
 ```bash
-# Set up database and permissions
-./scripts/setup_database.sh
+# ❌ Database initialization fails with "Failed to create basic schema"
+./scripts/setup_database.sh  # FAILS
 
-# Request app permissions (you'll see system prompts)
+# ✅ Permission requests work
 mac_tools/.build/release/mac_tools tcc_request --calendar --contacts --reminders
 
-# Run full data ingestion (after granting permissions)
-mac_tools/.build/release/db_cli ingest_full
+# ❌ Ingestion fails to find real data
+mac_tools/.build/release/db_cli ingest_full  # Returns "Error" or silent failure
 
-# Test search capabilities for your actual calendar events
-mac_tools/.build/release/db_cli search "appointment"  # Search for your calendar events
-mac_tools/.build/release/db_cli search "january 2025"  # Search by date
-mac_tools/.build/release/db_cli stats  # Check what data was ingested
+# ❌ Search returns 0 results despite data existing
+mac_tools/.build/release/db_cli search "Courtney"  # Should find messages, returns 0
+mac_tools/.build/release/db_cli search "spa"       # Should find "spa by 3" message, returns 0  
+mac_tools/.build/release/db_cli search "Mrs Jacobs" # Should find emails, returns 0
+mac_tools/.build/release/db_cli stats  # Shows 0 emails, 19 messages, 1 event (should be thousands)
 ```
+
+**Current Status**: System finds virtually no user data despite thousands of items being available.
 
 #### 3. Embeddings & Hybrid Search Testing
 ```bash
