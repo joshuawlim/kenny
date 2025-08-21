@@ -96,16 +96,16 @@ public class EmbeddingsService {
     }
     
     private func performEmbeddingRequest(text: String) async throws -> [Float] {
-        let url = URL(string: "\(ollamaBaseURL)/api/embeddings")!
+        let url = URL(string: "\(ollamaBaseURL)/api/embed")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeoutInterval
         
-        // Try primary format (Ollama expects "prompt")
+        // Use current 2025 Ollama API format (primary: "input")
         let primaryPayload: [String: Any] = [
             "model": model.rawValue,
-            "prompt": text
+            "input": text
         ]
         
         do {
@@ -113,15 +113,15 @@ public class EmbeddingsService {
             let result = try await executeRequest(request: request)
             return result
         } catch EmbeddingError.apiError(let message) where message.contains("400") {
-            // If 400 error, try alternative format with "input" field
-            print("⚠️  Primary format failed with 400, trying alternative format with 'input' field")
+            // If 400 error, try legacy format with "prompt" field for backward compatibility
+            print("⚠️  Primary format failed with 400, trying legacy format with 'prompt' field")
             
-            let alternativePayload: [String: Any] = [
+            let legacyPayload: [String: Any] = [
                 "model": model.rawValue,
-                "input": text
+                "prompt": text
             ]
             
-            request.httpBody = try JSONSerialization.data(withJSONObject: alternativePayload)
+            request.httpBody = try JSONSerialization.data(withJSONObject: legacyPayload)
             return try await executeRequest(request: request)
         } catch {
             throw error

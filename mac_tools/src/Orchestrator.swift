@@ -122,16 +122,24 @@ public class Orchestrator {
         let ingestManager = IngestManager(database: database)
         
         if sources.isEmpty {
-            // Ingest all sources
-            // For now, let's just return empty stats instead of a full ingest
-            var stats = IngestStats(source: "orchestrator")
-            stats.duration = 0
-            return UserResponse(
-                type: .dataIngest,
-                success: true,
-                data: ["stats": stats.toDictionary()],
-                message: "Completed full data ingest: \(stats.itemsCreated) items created"
-            )
+            // Ingest all sources - run real full ingest
+            do {
+                try await ingestManager.runFullIngest()
+                let combinedStats = IngestStats(source: "orchestrator_full")
+                return UserResponse(
+                    type: .dataIngest,
+                    success: true,
+                    data: ["stats": combinedStats.toDictionary()],
+                    message: "Completed full data ingest: \(combinedStats.itemsCreated) items created"
+                )
+            } catch {
+                return UserResponse(
+                    type: .dataIngest,
+                    success: false,
+                    data: ["error": error.localizedDescription],
+                    message: "Full data ingest failed: \(error.localizedDescription)"
+                )
+            }
         } else {
             // Ingest specific sources
             let results = try await ingestSpecificSources(sources, fullSync: fullSync, ingestManager: ingestManager)
@@ -222,33 +230,15 @@ public class Orchestrator {
     // MARK: - Logging
     
     private func logRequest(_ request: UserRequest) {
-        let logEntry: [String: Any] = [
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "event": "request_received",
-            "type": request.type.rawValue,
-            "user_id": request.userId,
-            "request_id": request.requestId,
-            "success": NSNull(),
-            "duration_ms": NSNull(),
-            "error": NSNull()
-        ]
-        
-        database.insert("orchestrator_logs", data: logEntry)
+        // Use basic logging until LoggingService is properly integrated
+        print("[ORCHESTRATOR] Request received: \(request.requestId) - \(request.type.rawValue)")
     }
     
     private func logResponse(request: UserRequest, response: UserResponse?, duration: TimeInterval, error: Error?) {
-        let logEntry: [String: Any] = [
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "event": "request_completed", 
-            "type": request.type.rawValue,
-            "user_id": request.userId,
-            "request_id": request.requestId,
-            "success": error == nil,
-            "duration_ms": Int(duration * 1000),
-            "error": error?.localizedDescription ?? NSNull()
-        ]
-        
-        database.insert("orchestrator_logs", data: logEntry)
+        let success = error == nil
+        // Use basic logging until LoggingService is properly integrated
+        let errorMsg = error?.localizedDescription ?? "none"
+        print("[ORCHESTRATOR] Request completed: \(request.requestId) - Success: \(success) - Duration: \(Int(duration * 1000))ms - Error: \(errorMsg)")
     }
 }
 
