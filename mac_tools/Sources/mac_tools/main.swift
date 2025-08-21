@@ -2,6 +2,9 @@ import Foundation
 import ArgumentParser
 import EventKit
 import OSLog
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
 
 // MARK: - Logging Infrastructure
 struct LogEntry: Codable {
@@ -101,6 +104,27 @@ func printJSON<T: Encodable>(_ value: T) -> Int32 {
         }
     } catch {}
     return 1
+}
+
+// MARK: - Hash Utilities
+extension String {
+    func sha256() -> String {
+        guard let data = self.data(using: .utf8) else { return "" }
+        #if canImport(CryptoKit)
+        let digest = SHA256.hash(data: data)
+        return digest.compactMap { String(format: "%02x", $0) }.joined()
+        #else
+        // Fallback for older systems  
+        return self.data(using: .utf8)?.base64EncodedString() ?? ""
+        #endif
+    }
+}
+
+/// Generate consistent operation hash matching PlanManager format
+func generateOperationHash(tool: String, parameters: [String: Any]) -> String {
+    let sortedParams = parameters.sorted(by: { $0.key < $1.key })
+    let hashData = "\(tool):\(sortedParams)"
+    return hashData.sha256()
 }
 
 // MARK: - Dry Run Infrastructure
@@ -325,7 +349,14 @@ struct RemindersCreate: ParsableCommand {
             "tags": AnyCodable(tags ?? "")
         ]
         
-        let operationHash = "\(title):\(due ?? ""):\(notes ?? "")".data(using: .utf8)?.base64EncodedString() ?? ""
+        // Generate operation hash using same protocol as PlanManager
+        let parameters: [String: Any] = [
+            "title": title,
+            "due": due ?? "",
+            "notes": notes ?? "",
+            "tags": tags ?? ""
+        ]
+        let operationHash = generateOperationHash(tool: "create_reminder", parameters: parameters)
         
         if dryRun {
             DryRunManager.storeDryRunHash(operationHash)
@@ -346,12 +377,18 @@ struct RemindersCreate: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            if confirm {
-                guard DryRunManager.validateConfirmHash(operationHash) else {
-                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
-                    _ = printJSON(err)
-                    throw ExitCode(2)
-                }
+            // Enforce safety: mutating operations MUST have --confirm flag
+            guard confirm else {
+                let err = ErrorOut(error: .init(code: "SAFETY_ERROR", message: "Mutating operation requires --confirm flag", details: ["operation": "create_reminder"]))
+                _ = printJSON(err)
+                throw ExitCode(2)
+            }
+            
+            // Validate operation hash if provided
+            guard DryRunManager.validateConfirmHash(operationHash) else {
+                let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                _ = printJSON(err)
+                throw ExitCode(2)
             }
             
             // TODO: Implement real Reminders integration
@@ -433,12 +470,17 @@ struct RemindersDelete: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            if confirm {
-                guard DryRunManager.validateConfirmHash(operationHash) else {
-                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
-                    _ = printJSON(err)
-                    throw ExitCode(2)
-                }
+            // Enforce safety: mutating operations MUST have --confirm flag
+            guard confirm else {
+                let err = ErrorOut(error: .init(code: "SAFETY_ERROR", message: "Mutating operation requires --confirm flag", details: ["operation": "delete_reminder"]))
+                _ = printJSON(err)
+                throw ExitCode(2)
+            }
+            
+            guard DryRunManager.validateConfirmHash(operationHash) else {
+                let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                _ = printJSON(err)
+                throw ExitCode(2)
             }
             
             // TODO: Implement real Reminders deletion
@@ -518,12 +560,17 @@ struct CalendarDelete: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            if confirm {
-                guard DryRunManager.validateConfirmHash(operationHash) else {
-                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
-                    _ = printJSON(err)
-                    throw ExitCode(2)
-                }
+            // Enforce safety: mutating operations MUST have --confirm flag
+            guard confirm else {
+                let err = ErrorOut(error: .init(code: "SAFETY_ERROR", message: "Mutating operation requires --confirm flag", details: ["operation": "delete_event"]))
+                _ = printJSON(err)
+                throw ExitCode(2)
+            }
+            
+            guard DryRunManager.validateConfirmHash(operationHash) else {
+                let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                _ = printJSON(err)
+                throw ExitCode(2)
             }
             
             // TODO: Implement real Calendar deletion
@@ -604,12 +651,17 @@ struct NotesAppend: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            if confirm {
-                guard DryRunManager.validateConfirmHash(operationHash) else {
-                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
-                    _ = printJSON(err)
-                    throw ExitCode(2)
-                }
+            // Enforce safety: mutating operations MUST have --confirm flag
+            guard confirm else {
+                let err = ErrorOut(error: .init(code: "SAFETY_ERROR", message: "Mutating operation requires --confirm flag", details: ["operation": "append_note"]))
+                _ = printJSON(err)
+                throw ExitCode(2)
+            }
+            
+            guard DryRunManager.validateConfirmHash(operationHash) else {
+                let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                _ = printJSON(err)
+                throw ExitCode(2)
             }
             
             // TODO: Implement real Notes integration
@@ -764,12 +816,17 @@ struct FilesMove: ParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            if confirm {
-                guard DryRunManager.validateConfirmHash(operationHash) else {
-                    let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
-                    _ = printJSON(err)
-                    throw ExitCode(2)
-                }
+            // Enforce safety: mutating operations MUST have --confirm flag
+            guard confirm else {
+                let err = ErrorOut(error: .init(code: "SAFETY_ERROR", message: "Mutating operation requires --confirm flag", details: ["operation": "move_file"]))
+                _ = printJSON(err)
+                throw ExitCode(2)
+            }
+            
+            guard DryRunManager.validateConfirmHash(operationHash) else {
+                let err = ErrorOut(error: .init(code: "CONFIRM_ERROR", message: "No matching dry-run found", details: ["hash": operationHash]))
+                _ = printJSON(err)
+                throw ExitCode(2)
             }
             
             // TODO: Implement real file operations

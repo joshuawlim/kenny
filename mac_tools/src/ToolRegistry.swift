@@ -256,7 +256,7 @@ public class ToolRegistry {
     private func executeMacTool(_ toolName: String, _ arguments: [String: Any]) async throws -> [String: Any] {
         // Check if this is a mutating operation and enforce dry-run safety
         let isMutating = isMutatingTool(toolName)
-        let hasConfirm = arguments["confirmed"] as? Bool == true
+        let hasConfirm = arguments["confirm"] as? Bool == true
         let hasDryRun = arguments["dry_run"] as? Bool == true
         
         // Safety enforcement: Mutating tools must use dry-run first, then confirm
