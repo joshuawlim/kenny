@@ -96,10 +96,12 @@ public class IngestManager {
     func ingestCalendar(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "calendar")
         
-        // Request calendar access
+        // Request calendar access with modern API
         let status = EKEventStore.authorizationStatus(for: .event)
-        if status != .authorized {
+        if status != .authorized && status != .fullAccess {
             try await requestCalendarAccess()
+            // Reset event store after authorization change
+            eventStore.reset()
         }
         
         let calendars = eventStore.calendars(for: .event)
@@ -196,15 +198,7 @@ public class IngestManager {
                     "document_id": documentId,
                     "start_time": Int(event.startDate.timeIntervalSince1970),
                     "end_time": event.endDate != nil ? Int(event.endDate!.timeIntervalSince1970) : NSNull(),
-                    "is_all_day": event.isAllDay,
-                    "location": event.location ?? NSNull(),
-                    "attendees": NSNull(), // TODO: Fix attendees encoding
-                    "organizer_name": event.organizer?.name ?? NSNull(),
-                    "organizer_email": extractEmailFromURL(event.organizer?.url) ?? NSNull(),
-                    "status": eventStatusString(event.status),
-                    "calendar_name": event.calendar.title,
-                    "recurrence_rule": event.recurrenceRules?.first?.description ?? NSNull(),
-                    "timezone": event.timeZone?.identifier ?? NSNull()
+                    "location": event.location ?? ""
                 ]
                 
                 if !self.database.insert("events", data: eventData) {
@@ -507,14 +501,27 @@ public class IngestManager {
     
     // MARK: - Helper Methods
     private func requestCalendarAccess() async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            eventStore.requestAccess(to: .event) { granted, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if !granted {
-                    continuation.resume(throwing: IngestError.permissionDenied("Calendar"))
-                } else {
-                    continuation.resume()
+        // Use modern API for macOS 14+ if available
+        if #available(macOS 14.0, iOS 17.0, *) {
+            do {
+                let granted = try await eventStore.requestFullAccessToEvents()
+                if !granted {
+                    throw IngestError.permissionDenied("Calendar - Full access required to read events")
+                }
+            } catch {
+                throw IngestError.permissionDenied("Calendar - \(error.localizedDescription)")
+            }
+        } else {
+            // Fallback to legacy API
+            return try await withCheckedThrowingContinuation { continuation in
+                eventStore.requestAccess(to: .event) { granted, error in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                    } else if !granted {
+                        continuation.resume(throwing: IngestError.permissionDenied("Calendar"))
+                    } else {
+                        continuation.resume()
+                    }
                 }
             }
         }
