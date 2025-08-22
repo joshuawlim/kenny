@@ -27,13 +27,16 @@ struct ProcessQuery: AsyncParsableCommand {
     var query: String
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
+    var dbPath: String = "kenny.db"
     
     @Option(name: .customLong("max-retries"), help: "Maximum retry attempts")
     var maxRetries: Int = 3
     
     @Flag(help: "Enable verbose output (default is JSON-only)")
     var verbose: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Confirmation hash for mutating operations")
+    var operationHash: String?
     
     func run() async throws {
         if verbose {
@@ -47,7 +50,12 @@ struct ProcessQuery: AsyncParsableCommand {
         let assistantCore = AssistantCore(database: database, maxRetries: maxRetries, verbose: verbose)
         
         do {
-            let response = try await assistantCore.processQuery(query)
+            // Use planning system if operation hash provided (Week 5 confirmation workflow)
+            let response = if let hash = operationHash {
+                try await assistantCore.processQueryWithPlanning(query)
+            } else {
+                try await assistantCore.processQuery(query)
+            }
             
             // Output structured JSON response
             let responseDict = response.toDictionary()
@@ -151,7 +159,7 @@ struct TestDeterministic: AsyncParsableCommand {
     )
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "\(NSHomeDirectory())/Library/Application Support/Assistant/assistant.db"
+    var dbPath: String = "kenny.db"
     
     func run() async throws {
         print("🧪 Week 4 Assistant Core - Deterministic Test Suite")

@@ -55,7 +55,7 @@ public class AssistantCore {
             if verbose { print("✅ Confirming and executing plan: \(planId)") }
             
             // Step 1: Confirm the plan
-            let confirmedPlan = try await planManager.confirmPlan(planId, userHash: userHash)
+            _ = try await planManager.confirmPlan(planId, userHash: userHash)
             
             // Step 2: Execute the plan
             let executionResult = try await planManager.executePlan(planId, toolRegistry: toolRegistry)
@@ -83,14 +83,25 @@ public class AssistantCore {
         }
     }
     
-    /// Legacy single-step execution (for backward compatibility)
+    /// Week 4: Direct query processing (bypasses planning for testing)
     public func processQuery(_ query: String) async throws -> AssistantResponse {
-        return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.process_query_legacy") {
+        return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.process_query") {
             let startTime = Date()
             
-            if verbose { print("🤖 Processing query (legacy mode): '\(query)'") }
+            if verbose { print("🤖 Processing query: '\(query)'") }
             
-            // Create a simple plan and execute immediately for non-mutating operations
+            return try await processQueryDirectly(query, startTime: startTime)
+        }
+    }
+    
+    /// Week 5: Plan-based execution for complex workflows
+    public func processQueryWithPlanning(_ query: String) async throws -> AssistantResponse {
+        return try await PerformanceMonitor.shared.recordAsyncOperation("assistant_core.process_query_planned") {
+            let startTime = Date()
+            
+            if verbose { print("🧠 Processing query with planning: '\(query)'") }
+            
+            // Create a plan and execute
             let plan = try await createPlan(for: query)
             
             // Safety policy: Block untrusted content
@@ -139,6 +150,69 @@ public class AssistantCore {
                 return try await confirmAndExecutePlan(plan.id)
             }
         }
+    }
+    
+    /// Week 4: Direct execution without planning complexity
+    private func processQueryDirectly(_ query: String, startTime: Date) async throws -> AssistantResponse {
+        var lastError: Error?
+        
+        for attempt in 1...maxRetries {
+            do {
+                if verbose { print("🔄 Attempt \(attempt)/\(maxRetries)") }
+                
+                // Step 1: Select tool
+                let toolSelection = try await selectTool(for: query, attempt: attempt)
+                if verbose { print("🔧 Selected tool: \(toolSelection.toolName) - \(toolSelection.reasoning)") }
+                
+                // Step 2: Validate arguments
+                try validateArguments(toolSelection.toolName, arguments: toolSelection.arguments)
+                if verbose { print("✅ Arguments validated") }
+                
+                // Step 3: Execute tool
+                let result = try await executeTool(toolSelection.toolName, arguments: toolSelection.arguments)
+                if verbose { print("🎯 Tool executed successfully") }
+                
+                let duration = Date().timeIntervalSince(startTime)
+                
+                return AssistantResponse(
+                    success: true,
+                    result: result,
+                    toolUsed: toolSelection.toolName,
+                    attempts: attempt,
+                    duration: duration,
+                    error: nil
+                )
+                
+            } catch {
+                lastError = error
+                let errorSummary = summarizeError(error)
+                
+                if verbose { print("❌ Attempt \(attempt) failed: \(errorSummary)") }
+                
+                // Skip retries for validation errors
+                if error is ValidationError {
+                    break
+                }
+                
+                // Brief delay before retry
+                if attempt < maxRetries {
+                    try await Task.sleep(nanoseconds: UInt64(attempt * 250_000_000)) // 250ms * attempt
+                }
+            }
+        }
+        
+        // All attempts failed
+        let duration = Date().timeIntervalSince(startTime)
+        let errorSummary = lastError != nil ? summarizeError(lastError!) : "Unknown error"
+        
+        return AssistantResponse(
+            success: false,
+            result: ["error": errorSummary],
+            toolUsed: nil,
+            attempts: maxRetries,
+            duration: duration,
+            error: errorSummary
+        )
     }
     
     // MARK: - Configuration-Based Helpers

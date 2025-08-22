@@ -316,7 +316,7 @@ public class PlanManager {
         
         User query: \(query)
         
-        Respond with JSON array of steps:
+        IMPORTANT: Respond with ONLY a valid JSON array, no other text:
         [
             {
                 "tool_name": "tool_name",
@@ -329,7 +329,16 @@ public class PlanManager {
         """
         
         let response = try await llmService.generateResponse(prompt: context)
-        return try parsePlanSteps(response)
+        
+        do {
+            return try parsePlanSteps(response)
+        } catch {
+            os_log("LLM plan parsing failed: %{public}s, response: %{public}s", 
+                   log: logger, type: .error, error.localizedDescription, response)
+            
+            // Fallback to intelligent deterministic planning
+            return [createIntelligentPlanStep(query: query, availableTools: availableTools)]
+        }
     }
     
     private func createSimplePlanStep(query: String, availableTools: [ToolDefinition]) -> PlanStep {
@@ -363,6 +372,115 @@ public class PlanManager {
                 requiresConfirmation: false
             )
         }
+    }
+    
+    /// Week 5: Intelligent deterministic planning for complex workflows
+    private func createIntelligentPlanStep(query: String, availableTools: [ToolDefinition]) -> PlanStep {
+        let lowercaseQuery = query.lowercased()
+        
+        // Complex workflow patterns
+        if lowercaseQuery.contains("conversation") && lowercaseQuery.contains("topic") {
+            // Pattern: Conversation analysis for topics
+            return PlanStep(
+                toolName: "search_data",
+                arguments: [
+                    "query": extractPersonName(from: query) ?? "conversations",
+                    "limit": 50,
+                    "hybrid": true
+                ],
+                description: "Analyze conversation history to identify discussion topics",
+                isMutating: false,
+                requiresConfirmation: false
+            )
+        }
+        
+        if lowercaseQuery.contains("last interaction") || lowercaseQuery.contains("when") && lowercaseQuery.contains("talked") {
+            // Pattern: Last interaction tracking
+            return PlanStep(
+                toolName: "search_data", 
+                arguments: [
+                    "query": extractPersonName(from: query) ?? "messages",
+                    "limit": 10,
+                    "hybrid": true
+                ],
+                description: "Find most recent interactions and communications",
+                isMutating: false,
+                requiresConfirmation: false
+            )
+        }
+        
+        if lowercaseQuery.contains("birthday") && lowercaseQuery.contains("gift") {
+            // Pattern: Gift suggestion based on interactions
+            return PlanStep(
+                toolName: "search_data",
+                arguments: [
+                    "query": "\(extractPersonName(from: query) ?? "person") interests hobbies",
+                    "limit": 30,
+                    "hybrid": true
+                ],
+                description: "Analyze interaction history to suggest meaningful gift ideas",
+                isMutating: false,
+                requiresConfirmation: false
+            )
+        }
+        
+        if lowercaseQuery.contains("action item") || lowercaseQuery.contains("todo") || lowercaseQuery.contains("follow up") {
+            // Pattern: Action item tracking
+            return PlanStep(
+                toolName: "search_data",
+                arguments: [
+                    "query": "\(extractPersonName(from: query) ?? "") action item todo follow up meeting",
+                    "limit": 20,
+                    "hybrid": true
+                ],
+                description: "Search for outstanding action items and commitments",
+                isMutating: false,
+                requiresConfirmation: false
+            )
+        }
+        
+        // Fallback to comprehensive search
+        return PlanStep(
+            toolName: "search_data",
+            arguments: [
+                "query": query,
+                "limit": 20,
+                "hybrid": true
+            ],
+            description: "Comprehensive search across all data sources",
+            isMutating: false,
+            requiresConfirmation: false
+        )
+    }
+    
+    /// Extract person name from query for targeted search
+    private func extractPersonName(from query: String) -> String? {
+        // Simple name extraction patterns
+        let patterns = [
+            "with ([A-Za-z]+)",
+            "from ([A-Za-z]+)", 
+            "'s ([A-Za-z]+)",
+            "about ([A-Za-z]+)",
+            "([A-Za-z]+)'s"
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let range = NSRange(location: 0, length: query.utf16.count)
+                if let match = regex.firstMatch(in: query, options: [], range: range) {
+                    if let nameRange = Range(match.range(at: 1), in: query) {
+                        let name = String(query[nameRange])
+                        // Filter out common words
+                        let commonWords = ["my", "the", "all", "some", "any", "their", "his", "her"]
+                        if !commonWords.contains(name.lowercased()) {
+                            return name
+                        }
+                    }
+                }
+            }
+        }
+        
+        return nil
     }
     
     private func parsePlanSteps(_ response: String) throws -> [PlanStep] {

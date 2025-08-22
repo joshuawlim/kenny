@@ -4,7 +4,7 @@ import DatabaseCore
 
 /// Command-line interface for testing the Orchestrator
 @main
-struct OrchestratorCLI: ParsableCommand {
+struct OrchestratorCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "orchestrator_cli",
         abstract: "Test CLI for Kenny Orchestrator",
@@ -12,14 +12,16 @@ struct OrchestratorCLI: ParsableCommand {
         subcommands: [
             SearchCommand.self,
             IngestCommand.self,
-            StatusCommand.self
+            StatusCommand.self,
+            PlanCommand.self,
+            ExecuteCommand.self
         ]
     )
 }
 
 // MARK: - Search Command
 
-struct SearchCommand: ParsableCommand {
+struct SearchCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "search",
         abstract: "Search across all data sources"
@@ -34,7 +36,7 @@ struct SearchCommand: ParsableCommand {
     @Option(help: "Filter by data types (comma-separated)")
     var types: String = ""
     
-    func run() throws {
+    func run() async throws {
         // Use kenny.db in mac_tools directory as source of truth
         let kennyDBPath = "kenny.db"
         let database = Database(path: kennyDBPath)
@@ -51,23 +53,19 @@ struct SearchCommand: ParsableCommand {
             ]
         )
         
-        Task {
-            do {
-                let response = try await orchestrator.processRequest(request)
-                printResponse(response)
-            } catch {
-                print("Error: \(error.localizedDescription)")
-                throw ExitCode.failure
-            }
+        do {
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
         }
-        
-        RunLoop.main.run()
     }
 }
 
 // MARK: - Ingest Command
 
-struct IngestCommand: ParsableCommand {
+struct IngestCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ingest",
         abstract: "Ingest data from Apple apps"
@@ -79,7 +77,7 @@ struct IngestCommand: ParsableCommand {
     @Flag(name: .customLong("full-sync"), help: "Perform full sync (otherwise incremental)")
     var fullSync: Bool = false
     
-    func run() throws {
+    func run() async throws {
         // Use kenny.db in mac_tools directory as source of truth
         let kennyDBPath = "kenny.db"
         let database = Database(path: kennyDBPath)
@@ -95,29 +93,25 @@ struct IngestCommand: ParsableCommand {
             ]
         )
         
-        Task {
-            do {
-                let response = try await orchestrator.processRequest(request)
-                printResponse(response)
-            } catch {
-                print("Error: \(error.localizedDescription)")
-                throw ExitCode.failure
-            }
+        do {
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
         }
-        
-        RunLoop.main.run()
     }
 }
 
 // MARK: - Status Command
 
-struct StatusCommand: ParsableCommand {
+struct StatusCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "status",
         abstract: "Get system status"
     )
     
-    func run() throws {
+    func run() async throws {
         // Use kenny.db in mac_tools directory as source of truth
         let kennyDBPath = "kenny.db"
         let database = Database(path: kennyDBPath)
@@ -125,17 +119,106 @@ struct StatusCommand: ParsableCommand {
         
         let request = UserRequest(type: .status)
         
-        Task {
-            do {
-                let response = try await orchestrator.processRequest(request)
-                printResponse(response)
-            } catch {
-                print("Error: \(error.localizedDescription)")
-                throw ExitCode.failure
-            }
+        do {
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
         }
+    }
+}
+
+// MARK: - Week 5: Planning Commands
+
+struct PlanCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "plan",
+        abstract: "Create an execution plan for a complex query"
+    )
+    
+    @Argument(help: "User query to create a plan for")
+    var query: String
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String = "kenny.db"
+    
+    func run() async throws {
+        print("🧠 Creating execution plan for: '\(query)'")
         
-        RunLoop.main.run()
+        let database = Database(path: dbPath)
+        let assistantCore = AssistantCore(database: database, verbose: true)
+        
+        do {
+            let plan = try await assistantCore.createPlan(for: query)
+            
+            print("📋 Plan created successfully!")
+            print("Plan ID: \(plan.id)")
+            print("Steps: \(plan.steps.count)")
+            print("Risks: \(plan.risks.count)")
+            print("Content Origin: \(plan.contentOrigin.rawValue)")
+            
+            if let hash = plan.operationHash {
+                print("Operation Hash: \(hash)")
+            }
+            
+            // Output plan details as JSON
+            let jsonData = try JSONSerialization.data(
+                withJSONObject: plan.toDictionary(), 
+                options: [.prettyPrinted]
+            )
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            print(jsonString)
+            
+        } catch {
+            print("❌ Plan creation failed: \(error.localizedDescription)")
+            throw ExitCode.failure
+        }
+    }
+}
+
+struct ExecuteCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "execute",
+        abstract: "Execute a plan by ID with optional confirmation hash"
+    )
+    
+    @Argument(help: "Plan ID to execute")
+    var planId: String
+    
+    @Option(name: .customLong("hash"), help: "User confirmation hash")
+    var confirmationHash: String?
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String = "kenny.db"
+    
+    func run() async throws {
+        print("⚡ Executing plan: \(planId)")
+        
+        let database = Database(path: dbPath)
+        let assistantCore = AssistantCore(database: database, verbose: true)
+        
+        do {
+            let response = try await assistantCore.confirmAndExecutePlan(planId, userHash: confirmationHash)
+            
+            if response.success {
+                print("✅ Plan executed successfully!")
+            } else {
+                print("❌ Plan execution failed: \(response.error ?? "Unknown error")")
+            }
+            
+            // Output execution result as JSON
+            let jsonData = try JSONSerialization.data(
+                withJSONObject: response.toDictionary(),
+                options: [.prettyPrinted]
+            )
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            print(jsonString)
+            
+        } catch {
+            print("❌ Plan execution failed: \(error.localizedDescription)")
+            throw ExitCode.failure
+        }
     }
 }
 
@@ -162,5 +245,5 @@ private func printResponse(_ response: UserResponse) {
         print("Response: \(response)")
     }
     
-    exit(0)
+    // No need to exit explicitly in async context
 }
