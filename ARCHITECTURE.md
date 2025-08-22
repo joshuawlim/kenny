@@ -1,51 +1,53 @@
 # Kenny Architecture
 
-This document describes the technical architecture of Kenny, a local-first personal AI assistant for macOS.
+This document describes the technical architecture of Kenny, a local-first personal AI assistant for macOS with production-ready data ingestion.
 
 ## Design Principles
 
 1. **Local-First**: All processing happens on-device with no cloud dependencies
 2. **Privacy-Preserving**: User data never leaves the Mac except through explicit user actions
 3. **Deterministic**: All operations are reproducible and auditable
-4. **Fast**: Sub-3s response times for common workflows
-5. **Reliable**: 90%+ success rate on canonical workflows
+4. **Fast**: Sub-500ms search across 233k+ documents, sub-3s response times
+5. **Reliable**: 90%+ success rate with graceful error handling
+6. **Comprehensive**: 233,895 documents across all major data sources
 
-## System Overview
+## System Overview - Production Status
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Kenny Personal Assistant                        │
+│                     Kenny Personal Assistant (PRODUCTION)                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
-│  │      CLI        │  │   Orchestrator  │  │     Background Jobs     │ │
-│  │   Interface     │◀─┤   (Future)      │─▶│   Ingest, Cleanup,      │ │
-│  │                 │  │                 │  │   Daily Briefing        │ │
+│  │      CLI        │  │   Orchestrator  │  │  Comprehensive Ingest   │ │
+│  │   Interface     │◀─┤   ✅ ACTIVE     │─▶│   ✅ 233,895 docs       │ │
+│  │   ✅ ACTIVE     │  │                 │  │   Python + Swift        │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
 │           │                      │                         │            │
 │           ▼                      ▼                         ▼            │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
-│  │   Tool Layer    │  │  Local LLM      │  │    Job Scheduler        │ │
-│  │   mac_tools     │  │  (Future)       │  │    (Future)             │ │
-│  │                 │  │                 │  │                         │ │
+│  │   Tool Layer    │  │  Vector Search  │  │   WhatsApp Bridge       │ │
+│  │   mac_tools     │  │  (Embeddings)   │  │   ✅ Real-time Sync    │ │
+│  │   ✅ ACTIVE     │  │  ✅ ACTIVE      │  │   487 live messages     │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
 │           │                      │                         │            │
 │           ▼                      ▼                         ▼            │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │                      Data & Search Layer                            │ │
+│  │                    Data & Search Layer (254MB)                     │ │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌───────────────────┐   │ │
-│  │  │   SQLite DB     │  │      FTS5       │  │   Relationships   │   │ │
-│  │  │   + WAL Mode    │◀─┤   Full-Text     │◀─┤     Graph         │   │ │
-│  │  │                 │  │     Search      │  │                   │   │ │
+│  │  │   kenny.db      │  │      FTS5       │  │   Cross-Platform  │   │ │
+│  │  │   ✅ ACTIVE     │◀─┤   Full-Text     │◀─┤   Relationships   │   │ │
+│  │  │   Single Truth  │  │   ✅ ACTIVE     │  │   ✅ ACTIVE       │   │ │
 │  │  └─────────────────┘  └─────────────────┘  └───────────────────┘   │ │
 │  └─────────────────────────────────────────────────────────────────────┘ │
 │           │                      │                         │            │
 │           ▼                      ▼                         ▼            │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │                      Apple App Integration                          │ │
+│  │                     Data Sources (All Active)                      │ │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────┐   │ │
-│  │  │  Mail   │ │Calendar │ │Contacts │ │Messages │ │ Notes/Files │   │ │
-│  │  │AppleScrp│ │EventKit │ │CNContact│ │SQLite DB│ │  AppleScript│   │ │
+│  │  │WhatsApp │ │  Mail   │ │Messages │ │Calendar │ │  Contacts   │   │ │
+│  │  │177,865  │ │ 27,144  │ │ 26,861  │ │   703   │ │   1,321     │   │ │
+│  │  │✅ PROD  │ │✅ PROD  │ │✅ PROD  │ │✅ PROD  │ │✅ PROD      │   │ │
 │  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────────┘   │ │
 │  └─────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
