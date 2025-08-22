@@ -146,21 +146,64 @@ public class EmbeddingsService {
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         
-        // Try different response field formats
-        if let embedding = json?["embedding"] as? [Double] {
-            return embedding.map { Float($0) }
-        } else if let embedding = json?["embeddings"] as? [Double] {
+        // Try different response field formats with robust number parsing
+        if let embedding = parseEmbeddingArray(from: json?["embedding"]) {
+            return embedding
+        } else if let embedding = parseEmbeddingArray(from: json?["embeddings"]) {
             // Some providers use "embeddings" (plural)
-            return embedding.map { Float($0) }
+            return embedding
         } else if let data = json?["data"] as? [[String: Any]],
                   let firstData = data.first,
-                  let embedding = firstData["embedding"] as? [Double] {
+                  let embedding = parseEmbeddingArray(from: firstData["embedding"]) {
             // OpenAI-style response format
-            return embedding.map { Float($0) }
+            return embedding
         } else {
             print("⚠️  Unexpected response format: \(json ?? [:])")
             throw EmbeddingError.invalidResponse
         }
+    }
+    
+    private func parseEmbeddingArray(from value: Any?) -> [Float]? {
+        // Handle nested array structure from Ollama response
+        if let outerArray = value as? [Any], let innerArray = outerArray.first as? [Any] {
+            return convertToFloatArray(innerArray)
+        }
+        
+        // Handle direct array
+        if let array = value as? [Any] {
+            return convertToFloatArray(array)
+        }
+        
+        return nil
+    }
+    
+    private func convertToFloatArray(_ array: [Any]) -> [Float]? {
+        var result: [Float] = []
+        result.reserveCapacity(array.count)
+        
+        for item in array {
+            let floatValue: Float
+            
+            if let double = item as? Double {
+                floatValue = Float(double)
+            } else if let float = item as? Float {
+                floatValue = float
+            } else if let int = item as? Int {
+                floatValue = Float(int)
+            } else if let string = item as? String, let double = Double(string) {
+                // Handle scientific notation strings
+                floatValue = Float(double)
+            } else if let number = item as? NSNumber {
+                floatValue = number.floatValue
+            } else {
+                print("⚠️  Failed to parse embedding value: \(item) (type: \(type(of: item)))")
+                return nil
+            }
+            
+            result.append(floatValue)
+        }
+        
+        return result
     }
     
     func generateEmbeddings(for texts: [String]) async throws -> [[Float]] {
