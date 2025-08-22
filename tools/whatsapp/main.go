@@ -17,6 +17,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
@@ -153,8 +154,13 @@ func (w *WhatsAppLogger) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		w.handleMessage(v)
+	case *events.HistorySync:
+		w.handleHistorySync(v)
 	case *events.ChatPresence:
 		w.handleChatUpdate(v.MessageSource.Chat.String(), "", time.Now())
+	case *events.Connected:
+		w.log.Infof("Connected to WhatsApp - requesting message history...")
+		w.requestHistorySync()
 	case *events.LoggedOut:
 		w.log.Infof("Logged out: %v", v)
 	}
@@ -307,6 +313,179 @@ func (w *WhatsAppLogger) QueryMessages(chatJID string, limit int) ([]map[string]
 	}
 	
 	return messages, nil
+}
+
+// Request full history sync from WhatsApp
+func (w *WhatsAppLogger) requestHistorySync() {
+	if !w.client.IsConnected() {
+		w.log.Warnf("Cannot request history sync - client not connected")
+		return
+	}
+
+	if w.client.Store.ID == nil {
+		w.log.Warnf("Cannot request history sync - client not logged in")
+		return
+	}
+
+	// Request multiple batches to get comprehensive history
+	batchSizes := []int{10000, 5000, 2000}  // Try different batch sizes
+	
+	for i, batchSize := range batchSizes {
+		w.log.Infof("Requesting history sync batch %d/%d (%d messages)...", i+1, len(batchSizes), batchSize)
+		
+		// Build and send a history sync request
+		historyMsg := w.client.BuildHistorySyncRequest(nil, batchSize)
+		if historyMsg == nil {
+			w.log.Errorf("Failed to build history sync request for batch %d", i+1)
+			continue
+		}
+
+		_, err := w.client.SendMessage(context.Background(), types.JID{
+			Server: "s.whatsapp.net",
+			User:   "status",
+		}, historyMsg)
+
+		if err != nil {
+			w.log.Errorf("Failed to request history sync batch %d: %v", i+1, err)
+		} else {
+			w.log.Infof("History sync batch %d requested successfully", i+1)
+		}
+		
+		// Wait between requests to avoid overwhelming the server
+		if i < len(batchSizes)-1 {
+			time.Sleep(3 * time.Second)
+		}
+	}
+	
+	w.log.Infof("All history sync requests sent. Messages will appear as they are processed...")
+}
+
+// Handle history sync events
+func (w *WhatsAppLogger) handleHistorySync(historySync *events.HistorySync) {
+	w.log.Infof("Received history sync event with %d conversations", len(historySync.Data.Conversations))
+
+	syncedCount := 0
+	for _, conversation := range historySync.Data.Conversations {
+		// Parse JID from the conversation
+		if conversation.ID == nil {
+			continue
+		}
+
+		chatJID := *conversation.ID
+
+		// Try to parse the JID
+		jid, err := types.ParseJID(chatJID)
+		if err != nil {
+			w.log.Warnf("Failed to parse JID %s: %v", chatJID, err)
+			continue
+		}
+
+		// Get chat name (simplified version)
+		name := chatJID
+		if jid.Server == "g.us" {
+			name = fmt.Sprintf("Group %s", jid.User[:8]) // Shortened group name
+		} else {
+			name = jid.User // Individual chat
+		}
+
+		// Process messages
+		messages := conversation.Messages
+		if len(messages) > 0 {
+			// Update chat with latest message timestamp
+			latestMsg := messages[0]
+			if latestMsg == nil || latestMsg.Message == nil {
+				continue
+			}
+
+			// Get timestamp from message info
+			timestamp := time.Time{}
+			if ts := latestMsg.Message.GetMessageTimestamp(); ts != 0 {
+				timestamp = time.Unix(int64(ts), 0)
+			} else {
+				continue
+			}
+
+			w.store.StoreChat(chatJID, name, timestamp)
+
+			// Store messages
+			for _, msg := range messages {
+				if msg == nil || msg.Message == nil {
+					continue
+				}
+
+				// Extract text content
+				var content string
+				if msg.Message.Message != nil {
+					if conv := msg.Message.Message.GetConversation(); conv != "" {
+						content = conv
+					} else if ext := msg.Message.Message.GetExtendedTextMessage(); ext != nil {
+						content = ext.GetText()
+					}
+				}
+
+				// Skip empty messages for now (could add media handling later)
+				if content == "" {
+					continue
+				}
+
+				// Determine sender
+				var sender string
+				isFromMe := false
+				if msg.Message.Key != nil {
+					if msg.Message.Key.FromMe != nil {
+						isFromMe = *msg.Message.Key.FromMe
+					}
+					if !isFromMe && msg.Message.Key.Participant != nil && *msg.Message.Key.Participant != "" {
+						sender = *msg.Message.Key.Participant
+					} else if isFromMe {
+						sender = w.client.Store.ID.User
+					} else {
+						sender = jid.User
+					}
+				} else {
+					sender = jid.User
+				}
+
+				// Store message
+				msgID := ""
+				if msg.Message.Key != nil && msg.Message.Key.ID != nil {
+					msgID = *msg.Message.Key.ID
+				}
+
+				// Get message timestamp
+				timestamp := time.Time{}
+				if ts := msg.Message.GetMessageTimestamp(); ts != 0 {
+					timestamp = time.Unix(int64(ts), 0)
+				} else {
+					continue
+				}
+
+				err = w.store.StoreMessage(
+					msgID,
+					chatJID,
+					sender,
+					content,
+					timestamp,
+					isFromMe,
+					"", // No media type for now
+					"", // No filename
+					"", // No URL
+				)
+				if err != nil {
+					w.log.Warnf("Failed to store history message: %v", err)
+				} else {
+					syncedCount++
+				}
+			}
+		}
+	}
+
+	w.log.Infof("🔄 History sync batch complete. Stored %d messages from %d conversations.", syncedCount, len(historySync.Data.Conversations))
+	
+	// Get total message count from database
+	var totalCount int
+	w.store.db.QueryRow("SELECT COUNT(*) FROM messages").Scan(&totalCount)
+	w.log.Infof("📱 Total messages in database: %d", totalCount)
 }
 
 func main() {
