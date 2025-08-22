@@ -63,7 +63,15 @@ let package = Package(
                 "AuditLogger.swift",
                 "CompensationManager.swift",
                 "CLISafety.swift",
-                "LoggingService.swift"
+                "LoggingService.swift",
+                "MeetingConcierge.swift",
+                "EmailThreadingService.swift",
+                "RSVPParser.swift",
+                "CalendarConflictDetector.swift",
+                "MeetingSlotProposer.swift",
+                "EmailDrafter.swift",
+                "MeetingLinkGenerator.swift",
+                "FollowUpTracker.swift"
             ]
         ),
         .executableTarget(
