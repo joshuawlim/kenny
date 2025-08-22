@@ -7,10 +7,11 @@ Orchestrates ingestion from all major data sources with graceful error handling
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import sqlite3
+import os
 
 class KennyIngestOrchestrator:
     """Comprehensive ingest orchestrator for all Kenny data sources"""
@@ -86,6 +87,99 @@ class KennyIngestOrchestrator:
             return {"total": total, "by_source": counts}
         except Exception as e:
             return {"error": str(e)}
+    
+    def check_whatsapp_bridge_status(self):
+        """Check if WhatsApp bridge is active and receiving live messages"""
+        bridge_status = {
+            "process_running": False,
+            "database_exists": False,
+            "recent_activity": False,
+            "message_count": 0,
+            "last_message_time": None,
+            "status": "inactive"
+        }
+        
+        try:
+            # Check if bridge process is running
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+            if 'kenny_whatsapp_enhanced' in result.stdout:
+                bridge_status["process_running"] = True
+                print("✓ WhatsApp bridge process is running")
+            else:
+                print("⚠️  WhatsApp bridge process not found")
+            
+            # Check bridge database
+            bridge_db = f"{self.tools_dir}/whatsapp/whatsapp_messages.db"
+            if Path(bridge_db).exists():
+                bridge_status["database_exists"] = True
+                print(f"✓ WhatsApp bridge database found: {bridge_db}")
+                
+                # Check message count and recent activity
+                conn = sqlite3.connect(bridge_db)
+                cursor = conn.cursor()
+                
+                cursor.execute("SELECT COUNT(*) FROM messages")
+                bridge_status["message_count"] = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT MAX(timestamp) FROM messages")
+                latest_timestamp = cursor.fetchone()[0]
+                
+                if latest_timestamp:
+                    latest_time = None
+                    try:
+                        # Handle different timestamp formats
+                        if isinstance(latest_timestamp, str):
+                            # Try parsing ISO format first
+                            if 'T' in latest_timestamp or '+' in latest_timestamp or 'Z' in latest_timestamp:
+                                from dateutil import parser
+                                latest_time = parser.parse(latest_timestamp)
+                            else:
+                                # Try as Unix timestamp
+                                latest_timestamp = float(latest_timestamp)
+                                latest_time = datetime.fromtimestamp(latest_timestamp)
+                        else:
+                            # Numeric timestamp
+                            latest_time = datetime.fromtimestamp(latest_timestamp)
+                            
+                        bridge_status["last_message_time"] = latest_time.isoformat()
+                        
+                        # Check if last message is within last 24 hours (indicating active bridge)
+                        # Make latest_time timezone-naive for comparison
+                        if latest_time.tzinfo is not None:
+                            latest_time = latest_time.replace(tzinfo=None)
+                        time_diff = datetime.now() - latest_time
+                        if time_diff < timedelta(hours=24):
+                            bridge_status["recent_activity"] = True
+                            print(f"✓ Recent activity detected: Last message at {latest_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        else:
+                            print(f"⚠️  No recent activity: Last message at {latest_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    except Exception as e:
+                        print(f"⚠️  Could not parse timestamp: {latest_timestamp} ({e})")
+                        bridge_status["last_message_time"] = str(latest_timestamp)
+                
+                conn.close()
+                print(f"✓ Bridge database contains {bridge_status['message_count']} messages")
+            else:
+                print("⚠️  WhatsApp bridge database not found")
+            
+            # Determine overall status
+            if (bridge_status["process_running"] and 
+                bridge_status["database_exists"] and 
+                bridge_status["recent_activity"]):
+                bridge_status["status"] = "active"
+                print("🟢 WhatsApp bridge is ACTIVE and receiving live messages")
+            elif bridge_status["process_running"] and bridge_status["database_exists"]:
+                bridge_status["status"] = "running_but_stale"
+                print("🟡 WhatsApp bridge is running but no recent activity")
+            else:
+                bridge_status["status"] = "inactive"
+                print("🔴 WhatsApp bridge is INACTIVE")
+                
+        except Exception as e:
+            print(f"❌ Error checking WhatsApp bridge status: {e}")
+            bridge_status["status"] = "error"
+        
+        return bridge_status
     
     def ingest_calendar(self):
         """Ingest Calendar data using orchestrator CLI"""
@@ -309,12 +403,25 @@ class KennyIngestOrchestrator:
                 "failed": "✗", 
                 "warning": "⚠️",
                 "skipped": "⊝",
-                "pending": "?"
+                "pending": "?",
+                "bridge_active": "🟢",
+                "bridge_stale": "🟡", 
+                "bridge_inactive": "🔴"
             }.get(result["status"], "?")
             
             print(f"{status_icon} {source:15} - {result['status'].upper()}")
             if result["count"] > 0:
                 print(f"    Records processed: {result['count']}")
+                
+            # Special handling for WhatsApp Bridge status
+            if source == "WhatsApp_Bridge" and "bridge_info" in result:
+                bridge_info = result["bridge_info"]
+                print(f"    Process running: {'Yes' if bridge_info['process_running'] else 'No'}")
+                print(f"    Messages in bridge: {bridge_info['message_count']:,}")
+                if bridge_info['last_message_time']:
+                    print(f"    Last message: {bridge_info['last_message_time']}")
+                print(f"    Recent activity: {'Yes' if bridge_info['recent_activity'] else 'No'}")
+                
             if result["errors"]:
                 for error in result["errors"][:2]:  # Show first 2 errors
                     print(f"    Error: {error}")
@@ -350,6 +457,26 @@ class KennyIngestOrchestrator:
         initial_counts = self.get_database_counts()
         if "total" in initial_counts:
             print(f"Initial document count: {initial_counts['total']:,}")
+        
+        # Check WhatsApp bridge status before ingestion
+        print("\n💚 CHECKING WHATSAPP BRIDGE STATUS")
+        print("="*50)
+        bridge_status = self.check_whatsapp_bridge_status()
+        
+        # Store bridge status in results for summary
+        if bridge_status["status"] == "active":
+            self.results["WhatsApp_Bridge"]["status"] = "bridge_active"
+        elif bridge_status["status"] == "running_but_stale":
+            self.results["WhatsApp_Bridge"]["status"] = "bridge_stale"  
+        else:
+            self.results["WhatsApp_Bridge"]["status"] = "bridge_inactive"
+        
+        self.results["WhatsApp_Bridge"]["bridge_info"] = {
+            "process_running": bridge_status["process_running"],
+            "message_count": bridge_status["message_count"],
+            "last_message_time": bridge_status["last_message_time"],
+            "recent_activity": bridge_status["recent_activity"]
+        }
         
         # Run all ingestion sources with graceful error handling
         self.ingest_calendar()
