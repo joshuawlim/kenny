@@ -45,6 +45,7 @@ let package = Package(
                 "MessagesIngester.swift",
                 "WhatsAppIngester.swift",
                 "FilesIngester.swift",
+                "CalendarIngester.swift",
                 "Orchestrator.swift",
                 "EmbeddingsService.swift",
                 "EmbeddingIngester.swift",

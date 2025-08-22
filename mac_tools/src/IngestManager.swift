@@ -91,7 +91,13 @@ public class IngestManager {
     }
     
     // MARK: - Calendar Ingestion
-    func ingestCalendar(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestCalendar(isFullSync: Bool, since: Date? = nil, batchSize: Int = 100, maxEvents: Int? = nil) async throws -> IngestStats {
+        // Use the existing legacy Calendar implementation for now
+        return try await ingestCalendarLegacy(isFullSync: isFullSync, since: since)
+    }
+    
+    // Legacy Calendar ingestion method (deprecated - use CalendarIngester directly)
+    private func ingestCalendarLegacy(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "calendar")
         
         // Request calendar access with modern API

@@ -14,6 +14,7 @@ struct DatabaseCLI: AsyncParsableCommand {
             IngestMessagesOnly.self,
             IngestContactsOnly.self,
             IngestMailOnly.self,
+            IngestCalendarOnly.self,
             Search.self,
             TestQueries.self,
             Stats.self,
@@ -888,6 +889,130 @@ struct IngestMailOnly: AsyncParsableCommand {
                 let result = Result(
                     status: "failed",
                     source: "mail",
+                    duration_seconds: duration,
+                    items_processed: 0,
+                    items_created: 0,
+                    errors: 1
+                )
+                _ = printJSON(result)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            }
+        }
+    }
+}
+
+struct IngestCalendarOnly: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_calendar_only",
+        abstract: "Run Calendar ingestion only (isolated)"
+    )
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
+    @Option(name: .customLong("batch-size"), help: "Batch size for processing (default: 100)")
+    var batchSize: Int = 100
+    
+    @Option(name: .customLong("max-events"), help: "Maximum events to process (default: unlimited)")
+    var maxEvents: Int?
+    
+    func run() async throws {
+        // Safety enforcement
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "source": "calendar_only",
+            "batch_size": batchSize,
+            "max_events": maxEvents as Any
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_calendar_only",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "Calendar events only",
+                    "batch_size": batchSize,
+                    "max_events": maxEvents as Any,
+                    "estimated_duration": maxEvents != nil ? "\(maxEvents! / batchSize + 1) batches" : "Variable based on total events"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
+        let db = Database(path: dbPath)
+        let ingestManager = IngestManager(database: db)
+        
+        struct Result: Codable {
+            let status: String
+            let source: String
+            let duration_seconds: Double
+            let items_processed: Int
+            let items_created: Int
+            let errors: Int
+        }
+        
+        let startTime = Date()
+        
+        if dryRun {
+            let result = Result(
+                status: "dry_run_complete",
+                source: "calendar",
+                duration_seconds: 0.1,
+                items_processed: 0,
+                items_created: 0,
+                errors: 0
+            )
+            _ = printJSON(result)
+        } else {
+            // Run Calendar ingestion ONLY
+            do {
+                print("Running Calendar-only ingestion...")
+                print("Parameters: batch_size=\(batchSize), max_events=\(maxEvents?.description ?? "unlimited")")
+                let calendarStats = try await ingestManager.ingestCalendar(
+                    isFullSync: true,
+                    batchSize: batchSize,
+                    maxEvents: maxEvents
+                )
+                let duration = Date().timeIntervalSince(startTime)
+                
+                let result = Result(
+                    status: "completed",
+                    source: "calendar",
+                    duration_seconds: duration,
+                    items_processed: calendarStats.itemsProcessed,
+                    items_created: calendarStats.itemsCreated,
+                    errors: calendarStats.errors
+                )
+                _ = printJSON(result)
+            } catch {
+                let duration = Date().timeIntervalSince(startTime)
+                let result = Result(
+                    status: "failed",
+                    source: "calendar",
                     duration_seconds: duration,
                     items_processed: 0,
                     items_created: 0,
