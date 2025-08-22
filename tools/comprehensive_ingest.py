@@ -22,8 +22,9 @@ class KennyIngestOrchestrator:
         self.mac_tools_dir = "/Users/joshwlim/Documents/Kenny/mac_tools"
         self.start_time = datetime.now()
         
-        # Track results for all sources
+        # Track results for all sources including backup
         self.results = {
+            "Database_Backup": {"status": "pending", "count": 0, "errors": []},
             "Calendar": {"status": "pending", "count": 0, "errors": []},
             "Mail": {"status": "pending", "count": 0, "errors": []},
             "Messages": {"status": "pending", "count": 0, "errors": []},
@@ -180,6 +181,43 @@ class KennyIngestOrchestrator:
             bridge_status["status"] = "error"
         
         return bridge_status
+    
+    def create_database_backup(self):
+        """Create database backup before starting ingestion"""
+        print("\n💾 CREATING DATABASE BACKUP")
+        print("="*50)
+        
+        result = self.run_command(
+            ["python3", f"{self.tools_dir}/db_backup.py"],
+            "Database backup creation",
+            timeout=120
+        )
+        
+        if result["success"]:
+            self.results["Database_Backup"]["status"] = "success"
+            # Extract backup path from summary log line
+            for line in result["stdout"].split('\n'):
+                if "BACKUP_SUMMARY:" in line:
+                    # Parse backup path and size info
+                    if "path=" in line:
+                        import re
+                        path_match = re.search(r'path=([^,]+)', line)
+                        size_match = re.search(r'size=([0-9.]+)MB', line)
+                        if path_match:
+                            backup_path = path_match.group(1)
+                            backup_size = size_match.group(1) if size_match else "unknown"
+                            print(f"✓ Backup created: {backup_path} ({backup_size}MB)")
+                            self.results["Database_Backup"]["backup_path"] = backup_path
+                            self.results["Database_Backup"]["backup_size"] = backup_size
+                            break
+        else:
+            self.results["Database_Backup"]["status"] = "failed"
+            self.results["Database_Backup"]["errors"].append(result.get("stderr", "Backup failed"))
+            # Backup failure is critical - abort ingestion
+            print("❌ CRITICAL: Database backup failed - aborting ingestion for safety")
+            return False
+        
+        return True
     
     def ingest_calendar(self):
         """Ingest Calendar data using orchestrator CLI"""
@@ -413,6 +451,15 @@ class KennyIngestOrchestrator:
             if result["count"] > 0:
                 print(f"    Records processed: {result['count']}")
                 
+            # Special handling for Database Backup status
+            if source == "Database_Backup":
+                if "backup_path" in result:
+                    import os
+                    backup_name = os.path.basename(result["backup_path"])
+                    print(f"    Backup file: {backup_name}")
+                    if "backup_size" in result:
+                        print(f"    Backup size: {result['backup_size']}MB")
+            
             # Special handling for WhatsApp Bridge status
             if source == "WhatsApp_Bridge" and "bridge_info" in result:
                 bridge_info = result["bridge_info"]
@@ -477,6 +524,11 @@ class KennyIngestOrchestrator:
             "last_message_time": bridge_status["last_message_time"],
             "recent_activity": bridge_status["recent_activity"]
         }
+        
+        # Create database backup before any modifications
+        print("\n🔄 PRE-INGESTION SAFETY BACKUP")
+        if not self.create_database_backup():
+            return  # Abort if backup fails
         
         # Run all ingestion sources with graceful error handling
         self.ingest_calendar()
