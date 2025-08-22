@@ -431,9 +431,10 @@ public class IngestManager {
         // For full sync, clear existing Contacts data to prevent unique constraint failures
         if isFullSync {
             print("DEBUG: Clearing existing Contacts data for full sync...")
-            let deletedDocs = database.query("DELETE FROM documents WHERE app_source = 'Contacts'")
-            let deletedContacts = database.query("DELETE FROM contacts")
-            print("DEBUG: Cleared existing Contacts data")
+            // Delete contacts first (referencing documents), then documents
+            let deletedContacts = database.execute("DELETE FROM contacts WHERE document_id IN (SELECT id FROM documents WHERE app_source = 'Contacts')")
+            let deletedDocs = database.execute("DELETE FROM documents WHERE app_source = 'Contacts'")
+            print("DEBUG: Cleared existing Contacts data - contacts: \(deletedContacts), docs: \(deletedDocs)")
         }
         
         // Wrap enumeration in proper async pattern to keep runloop alive

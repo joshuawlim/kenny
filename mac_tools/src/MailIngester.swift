@@ -45,9 +45,10 @@ class MailIngester {
         // For full sync, clear existing Mail data
         if isFullSync {
             print("DEBUG: Clearing existing Mail data for full sync...")
-            let deletedDocs = database.query("DELETE FROM documents WHERE app_source = 'Mail'")
-            let deletedEmails = database.query("DELETE FROM emails")
-            print("DEBUG: Cleared existing Mail data")
+            // Delete emails first (referencing documents), then documents
+            let deletedEmails = database.execute("DELETE FROM emails WHERE document_id IN (SELECT id FROM documents WHERE app_source = 'Mail')")
+            let deletedDocs = database.execute("DELETE FROM documents WHERE app_source = 'Mail'")
+            print("DEBUG: Cleared existing Mail data - emails: \(deletedEmails), docs: \(deletedDocs)")
         }
         
         // Build query with joins for complete message data

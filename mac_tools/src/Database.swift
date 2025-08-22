@@ -278,8 +278,8 @@ public class Database {
         let currentVersion = getCurrentSchemaVersion()
         print("Current schema version: \(currentVersion)")
         
-        // Run migrations up to version 3 (includes embeddings)
-        let targetVersion = 3
+        // Run migrations up to version 4 (includes enhanced contacts)
+        let targetVersion = 4
         
         if currentVersion < targetVersion {
             for version in (currentVersion + 1)...targetVersion {
