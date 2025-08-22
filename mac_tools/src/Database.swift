@@ -49,30 +49,102 @@ public class Database {
     
     @discardableResult
     func execute(_ sql: String) -> Bool {
-        // Handle multi-statement SQL by splitting and executing each statement
-        let statements = sql.components(separatedBy: ";")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        // Handle multi-statement SQL by parsing correctly with comment and multi-line support
+        let statements = parseMultipleStatements(sql)
         
-        for statement in statements {
+        for (index, statement) in statements.enumerated() {
             var stmt: OpaquePointer?
             defer { sqlite3_finalize(stmt) }
             
             if sqlite3_prepare_v2(db, statement, -1, &stmt, nil) != SQLITE_OK {
-                print("ERROR preparing statement: \(String(cString: sqlite3_errmsg(db)))")
-                print("Statement: \(statement)")
+                let error = String(cString: sqlite3_errmsg(db))
+                print("ERROR preparing statement \(index + 1): \(error)")
+                print("SQL was: \(statement)")
+                print("Full context (first 500 chars): \(String(sql.prefix(500)))")
                 return false
             }
             
             let result = sqlite3_step(stmt)
             if result != SQLITE_DONE && result != SQLITE_ROW {
-                print("ERROR executing statement: \(String(cString: sqlite3_errmsg(db)))")
-                print("Statement: \(statement)")
+                let error = String(cString: sqlite3_errmsg(db))
+                print("ERROR executing statement \(index + 1): \(error)")
+                print("SQL was: \(statement)")
+                print("Full context (first 500 chars): \(String(sql.prefix(500)))")
                 return false
             }
         }
         
         return true
+    }
+    
+    /// Parse SQL string into individual statements, handling comments and multi-line constructs
+    private func parseMultipleStatements(_ sql: String) -> [String] {
+        var statements: [String] = []
+        var currentStatement = ""
+        let lines = sql.components(separatedBy: .newlines)
+        
+        var inBlockComment = false
+        var inTrigger = false
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Handle block comments /* ... */
+            if trimmedLine.contains("/*") && trimmedLine.contains("*/") {
+                // Single line block comment - skip it
+                continue
+            } else if trimmedLine.contains("/*") {
+                inBlockComment = true
+                continue
+            } else if trimmedLine.contains("*/") {
+                inBlockComment = false
+                continue
+            } else if inBlockComment {
+                continue
+            }
+            
+            // Skip single-line comments and empty lines
+            if trimmedLine.isEmpty || trimmedLine.hasPrefix("--") {
+                continue
+            }
+            
+            // Add line to current statement
+            currentStatement += line + "\n"
+            
+            // Track if we're inside a trigger definition
+            let upperLine = trimmedLine.uppercased()
+            if upperLine.contains("CREATE TRIGGER") {
+                inTrigger = true
+            }
+            
+            // Check for statement end
+            if trimmedLine.hasSuffix(";") {
+                if inTrigger && upperLine.contains("END;") {
+                    // End of trigger
+                    inTrigger = false
+                    let statement = currentStatement.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !statement.isEmpty {
+                        statements.append(statement)
+                    }
+                    currentStatement = ""
+                } else if !inTrigger {
+                    // Regular statement end
+                    let statement = currentStatement.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !statement.isEmpty {
+                        statements.append(statement)
+                    }
+                    currentStatement = ""
+                }
+            }
+        }
+        
+        // Handle any remaining statement
+        let finalStatement = currentStatement.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !finalStatement.isEmpty {
+            statements.append(finalStatement)
+        }
+        
+        return statements
     }
     
     public func query(_ sql: String, parameters: [Any] = []) -> [[String: Any]] {
@@ -275,9 +347,22 @@ public class Database {
             
             CREATE TABLE IF NOT EXISTS contacts (
                 document_id TEXT PRIMARY KEY REFERENCES documents(id),
+                contact_id TEXT UNIQUE,
                 first_name TEXT,
                 last_name TEXT,
-                full_name TEXT
+                full_name TEXT,
+                primary_phone TEXT,
+                secondary_phone TEXT,
+                tertiary_phone TEXT,
+                primary_email TEXT,
+                secondary_email TEXT,
+                company TEXT,
+                job_title TEXT,
+                birthday INTEGER,
+                interests TEXT,
+                notes TEXT,
+                date_last_interaction INTEGER,
+                image_path TEXT
             );
             
             CREATE TABLE IF NOT EXISTS files (
@@ -478,7 +563,17 @@ public class Database {
 extension Database {
     public func testSimpleSearch(_ searchQuery: String) -> [[String: Any]] {
         let sql = "SELECT d.id, d.title FROM documents_fts JOIN documents d ON documents_fts.rowid = d.rowid WHERE documents_fts MATCH ?"
-        return query(sql, parameters: [searchQuery])
+        print("DEBUG: Database path: \(dbPath)")
+        print("DEBUG: Executing search query: \(sql)")
+        print("DEBUG: Search parameter: '\(searchQuery)'")
+        let results = query(sql, parameters: [searchQuery])
+        print("DEBUG: Search returned \(results.count) results")
+        if results.isEmpty {
+            // Test if FTS5 table exists and has data
+            let ftsCount = query("SELECT COUNT(*) as count FROM documents_fts", parameters: [])
+            print("DEBUG: FTS table count: \(ftsCount)")
+        }
+        return results
     }
     
     public func searchMultiDomain(_ searchQuery: String, types: [String] = [], limit: Int = 20) -> [SearchResult] {
@@ -492,14 +587,14 @@ extension Database {
         
         let sql = """
             SELECT d.id, d.type, d.title, d.content, d.app_source, d.source_path,
-                   snippet(documents_fts, 1, '<mark>', '</mark>', '...', 32) as search_snippet,
-                   bm25(documents_fts) as rank,
+                   substr(d.content, 1, 200) as search_snippet,
+                   0.0 as rank,
                    COALESCE(ev.location, '') as context_info
-            FROM documents_fts 
-            JOIN documents d ON documents_fts.rowid = d.rowid
+            FROM documents_fts fts
+            JOIN documents d ON fts.rowid = d.rowid
             LEFT JOIN events ev ON d.id = ev.document_id  
             WHERE \(whereClause)
-            ORDER BY rank
+            ORDER BY d.updated_at DESC
             LIMIT ?
         """
         

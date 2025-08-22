@@ -1,5 +1,6 @@
 import Foundation
 import OSAKit
+import SQLite3
 
 class MailIngester {
     private let database: Database
@@ -8,7 +9,171 @@ class MailIngester {
         self.database = database
     }
     
-    func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    func ingestMail(isFullSync: Bool, since: Date? = nil, batchSize: Int = 500, maxMessages: Int = 0) async throws -> IngestStats {
+        var stats = IngestStats(source: "mail")
+        
+        // Try direct database access first, fallback to AppleScript if needed
+        do {
+            stats = try await ingestMailDirect(isFullSync: isFullSync, since: since, batchSize: batchSize, maxMessages: maxMessages)
+            print("Mail ingest (direct): \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
+            return stats
+        } catch {
+            print("Direct database access failed (\(error)), falling back to AppleScript...")
+            return try await ingestMailAppleScript(isFullSync: isFullSync, since: since)
+        }
+    }
+    
+    private func ingestMailDirect(isFullSync: Bool, since: Date? = nil, batchSize: Int = 500, maxMessages: Int = 0) async throws -> IngestStats {
+        var stats = IngestStats(source: "mail")
+        print("DEBUG: Starting Mail ingestion (direct database access)...")
+        
+        // Locate Mail database
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        let mailDbPath = "\(homeDir)/Library/Mail/V10/MailData/Envelope Index"
+        
+        guard FileManager.default.fileExists(atPath: mailDbPath) else {
+            throw IngestError.dataCorruption // Mail database not found
+        }
+        
+        // Open Mail database
+        var mailDb: OpaquePointer?
+        guard sqlite3_open_v2(mailDbPath, &mailDb, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            throw IngestError.dataCorruption
+        }
+        defer { sqlite3_close(mailDb) }
+        
+        // For full sync, clear existing Mail data
+        if isFullSync {
+            print("DEBUG: Clearing existing Mail data for full sync...")
+            let deletedDocs = database.query("DELETE FROM documents WHERE app_source = 'Mail'")
+            let deletedEmails = database.query("DELETE FROM emails")
+            print("DEBUG: Cleared existing Mail data")
+        }
+        
+        // Build query with joins for complete message data
+        let sinceFilter = if let since = since {
+            " AND m.date_received > \(Int(since.timeIntervalSince1970))"
+        } else {
+            ""
+        }
+        
+        let limitClause = maxMessages > 0 ? " LIMIT \(maxMessages)" : ""
+        
+        let sql = """
+            SELECT 
+                m.ROWID, m.document_id, s.subject, a.address, a.comment,
+                m.date_sent, m.date_received, m.read, m.flagged, 
+                mb.url as mailbox_name, m.size
+            FROM messages m 
+            JOIN subjects s ON m.subject = s.ROWID 
+            JOIN addresses a ON m.sender = a.ROWID 
+            LEFT JOIN mailboxes mb ON m.mailbox = mb.ROWID
+            WHERE m.deleted = 0\(sinceFilter)
+            ORDER BY m.date_received DESC\(limitClause)
+        """
+        
+        print("DEBUG: Executing Mail query...")
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(mailDb, sql, -1, &statement, nil) == SQLITE_OK else {
+            let error = String(cString: sqlite3_errmsg(mailDb))
+            print("ERROR preparing Mail query: \(error)")
+            throw IngestError.dataCorruption
+        }
+        
+        var processedInBatch = 0
+        
+        print("DEBUG: Processing Mail messages in batches of \(batchSize)...")
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let documentId = UUID().uuidString
+            let now = Int(Date().timeIntervalSince1970)
+            
+            // Extract data from SQLite result
+            let mailRowId = sqlite3_column_int64(statement, 0)
+            let originalDocId = sqlite3_column_text(statement, 1)
+            let subjectText = sqlite3_column_text(statement, 2)
+            let senderAddress = sqlite3_column_text(statement, 3)
+            let senderName = sqlite3_column_text(statement, 4)
+            let dateSent = sqlite3_column_int64(statement, 5)
+            let dateReceived = sqlite3_column_int64(statement, 6)
+            let isRead = sqlite3_column_int(statement, 7)
+            let isFlagged = sqlite3_column_int(statement, 8)
+            let mailboxName = sqlite3_column_text(statement, 9)
+            let messageSize = sqlite3_column_int(statement, 10)
+            
+            // Convert to Swift strings safely
+            let subject = subjectText != nil ? String(cString: subjectText!) : "No Subject"
+            let sender = senderAddress != nil ? String(cString: senderAddress!) : "Unknown Sender"
+            let senderDisplayName = senderName != nil ? String(cString: senderName!) : sender
+            let mailbox = mailboxName != nil ? String(cString: mailboxName!) : "Unknown"
+            let originalId = originalDocId != nil ? String(cString: originalDocId!) : "mail-\(mailRowId)"
+            
+            // Create searchable content (metadata only - no message body for now)
+            let content = "\(subject) \(senderDisplayName) \(sender)"
+            
+            let docData: [String: Any] = [
+                "id": documentId,
+                "type": "email",
+                "title": subject,
+                "content": content,
+                "app_source": "Mail",
+                "source_id": originalId,
+                "source_path": "message://\(originalId)",
+                "hash": "\(originalId)\(subject)\(sender)\(dateReceived)".sha256(),
+                "created_at": Int(dateReceived),
+                "updated_at": now,
+                "last_seen_at": now,
+                "deleted": false
+            ]
+            
+            if database.insert("documents", data: docData) {
+                let emailData: [String: Any] = [
+                    "document_id": documentId,
+                    "message_id": originalId,
+                    "from_address": sender,
+                    "from_name": senderDisplayName,
+                    "date_sent": Int(dateSent),
+                    "date_received": Int(dateReceived),
+                    "is_read": isRead == 1,
+                    "is_flagged": isFlagged == 1,
+                    "mailbox": mailbox
+                ]
+                
+                if database.insert("emails", data: emailData) {
+                    stats.itemsCreated += 1
+                } else {
+                    stats.errors += 1
+                }
+            } else {
+                stats.errors += 1
+            }
+            
+            stats.itemsProcessed += 1
+            processedInBatch += 1
+            
+            // Progress reporting
+            if stats.itemsProcessed <= 3 || stats.itemsProcessed % 100 == 0 {
+                print("DEBUG: Processing email \(stats.itemsProcessed): \(subject) from \(senderDisplayName)")
+            }
+            
+            // Batch commit every batchSize messages
+            if processedInBatch >= batchSize {
+                print("DEBUG: Completed batch of \(batchSize) messages. Total: \(stats.itemsProcessed)")
+                processedInBatch = 0
+            }
+            
+            // Respect maxMessages limit
+            if maxMessages > 0 && stats.itemsProcessed >= maxMessages {
+                break
+            }
+        }
+        
+        print("DEBUG: Mail direct ingestion complete. Processed \(stats.itemsProcessed) messages")
+        return stats
+    }
+    
+    private func ingestMailAppleScript(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "mail")
         
         // Check if Mail.app is running
@@ -33,7 +198,7 @@ class MailIngester {
             }
         }
         
-        print("Mail ingest: \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
+        print("Mail ingest (AppleScript): \(stats.itemsProcessed) processed, \(stats.itemsCreated) created, \(stats.errors) errors")
         return stats
     }
     

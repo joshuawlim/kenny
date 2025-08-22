@@ -54,11 +54,6 @@ LEFT JOIN embeddings e ON c.id = e.chunk_id;
 
 -- Function to calculate cosine similarity (stored as SQL for reference)
 -- Note: Actual similarity calculation will be done in Swift for performance
-/*
-CREATE FUNCTION cosine_similarity(a BLOB, b BLOB) RETURNS REAL AS
-BEGIN
-    -- This would be implemented in application code
-    -- Stored here for documentation purposes
-    RETURN 0.0;
-END;
-*/
+-- The following would be implemented in application code:
+-- CREATE FUNCTION cosine_similarity(a BLOB, b BLOB) RETURNS REAL
+-- This is stored here for documentation purposes only

@@ -11,6 +11,9 @@ struct DatabaseCLI: AsyncParsableCommand {
             InitDB.self,
             IngestFull.self,
             IngestIncremental.self,
+            IngestMessagesOnly.self,
+            IngestContactsOnly.self,
+            IngestMailOnly.self,
             Search.self,
             TestQueries.self,
             Stats.self,
@@ -537,6 +540,363 @@ struct HybridSearchCommand: ParsableCommand {
         )
         
         _ = printJSON(response)
+    }
+}
+
+struct IngestMessagesOnly: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_messages_only",
+        abstract: "Run Messages ingestion only (isolated)"
+    )
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
+    @Option(name: .customLong("batch-size"), help: "Batch size for processing (default: 500)")
+    var batchSize: Int = 500
+    
+    @Option(name: .customLong("max-messages"), help: "Maximum messages to process (default: unlimited)")
+    var maxMessages: Int?
+    
+    func run() async throws {
+        // Safety enforcement
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "source": "messages_only",
+            "batch_size": batchSize,
+            "max_messages": maxMessages as Any
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_messages_only",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "Messages only",
+                    "batch_size": batchSize,
+                    "max_messages": maxMessages as Any,
+                    "estimated_duration": maxMessages != nil ? "\(maxMessages! / batchSize + 1) batches" : "Variable based on total messages"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
+        let db = Database(path: dbPath)
+        let ingestManager = IngestManager(database: db)
+        
+        struct Result: Codable {
+            let status: String
+            let source: String
+            let duration_seconds: Double
+            let items_processed: Int
+            let items_created: Int
+            let errors: Int
+        }
+        
+        let startTime = Date()
+        
+        if dryRun {
+            let result = Result(
+                status: "dry_run_complete",
+                source: "messages",
+                duration_seconds: 0.1,
+                items_processed: 0,
+                items_created: 0,
+                errors: 0
+            )
+            _ = printJSON(result)
+        } else {
+            // Run Messages ingestion ONLY
+            do {
+                print("Running Messages-only ingestion...")
+                print("Parameters: batch_size=\(batchSize), max_messages=\(maxMessages?.description ?? "unlimited")")
+                let messageStats = try await ingestManager.ingestMessages(
+                    isFullSync: true,
+                    batchSize: batchSize,
+                    maxMessages: maxMessages
+                )
+                let duration = Date().timeIntervalSince(startTime)
+                
+                let result = Result(
+                    status: "completed",
+                    source: "messages",
+                    duration_seconds: duration,
+                    items_processed: messageStats.itemsProcessed,
+                    items_created: messageStats.itemsCreated,
+                    errors: messageStats.errors
+                )
+                _ = printJSON(result)
+            } catch {
+                let duration = Date().timeIntervalSince(startTime)
+                let result = Result(
+                    status: "failed",
+                    source: "messages",
+                    duration_seconds: duration,
+                    items_processed: 0,
+                    items_created: 0,
+                    errors: 1
+                )
+                _ = printJSON(result)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            }
+        }
+    }
+}
+
+struct IngestContactsOnly: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_contacts_only",
+        abstract: "Run Contacts ingestion only (isolated)"
+    )
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
+    func run() async throws {
+        // Safety enforcement
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "source": "contacts_only"
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_contacts_only",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "Contacts only",
+                    "estimated_duration": "Variable based on total contacts"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
+        let db = Database(path: dbPath)
+        let ingestManager = IngestManager(database: db)
+        
+        struct Result: Codable {
+            let status: String
+            let source: String
+            let duration_seconds: Double
+            let items_processed: Int
+            let items_created: Int
+            let errors: Int
+        }
+        
+        let startTime = Date()
+        
+        if dryRun {
+            let result = Result(
+                status: "dry_run_complete",
+                source: "contacts",
+                duration_seconds: 0.1,
+                items_processed: 0,
+                items_created: 0,
+                errors: 0
+            )
+            _ = printJSON(result)
+        } else {
+            // Run Contacts ingestion ONLY
+            do {
+                print("Running Contacts-only ingestion...")
+                let contactStats = try await ingestManager.ingestContacts(isFullSync: true)
+                let duration = Date().timeIntervalSince(startTime)
+                
+                let result = Result(
+                    status: "completed",
+                    source: "contacts",
+                    duration_seconds: duration,
+                    items_processed: contactStats.itemsProcessed,
+                    items_created: contactStats.itemsCreated,
+                    errors: contactStats.errors
+                )
+                _ = printJSON(result)
+            } catch {
+                let duration = Date().timeIntervalSince(startTime)
+                let result = Result(
+                    status: "failed",
+                    source: "contacts",
+                    duration_seconds: duration,
+                    items_processed: 0,
+                    items_created: 0,
+                    errors: 1
+                )
+                _ = printJSON(result)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            }
+        }
+    }
+}
+
+struct IngestMailOnly: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_mail_only", 
+        abstract: "Run Mail ingestion only (isolated)"
+    )
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
+    @Option(name: .customLong("batch-size"), help: "Batch size for processing (default: 500)")
+    var batchSize: Int = 500
+    
+    @Option(name: .customLong("max-messages"), help: "Maximum messages to process (default: unlimited)")
+    var maxMessages: Int?
+    
+    func run() async throws {
+        // Safety enforcement
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "source": "mail_only",
+            "batch_size": batchSize,
+            "max_messages": maxMessages as Any
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_mail_only",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "Mail only",
+                    "batch_size": batchSize,
+                    "max_messages": maxMessages as Any,
+                    "estimated_duration": maxMessages != nil ? "\(maxMessages! / batchSize + 1) batches" : "Variable based on total messages"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
+        let db = Database(path: dbPath)
+        let ingestManager = IngestManager(database: db)
+        
+        struct Result: Codable {
+            let status: String
+            let source: String
+            let duration_seconds: Double
+            let items_processed: Int
+            let items_created: Int
+            let errors: Int
+        }
+        
+        let startTime = Date()
+        
+        if dryRun {
+            let result = Result(
+                status: "dry_run_complete",
+                source: "mail",
+                duration_seconds: 0.1,
+                items_processed: 0,
+                items_created: 0,
+                errors: 0
+            )
+            _ = printJSON(result)
+        } else {
+            // Run Mail ingestion ONLY
+            do {
+                print("Running Mail-only ingestion...")
+                print("Parameters: batch_size=\(batchSize), max_messages=\(maxMessages?.description ?? "unlimited")")
+                let mailStats = try await ingestManager.ingestMail(
+                    isFullSync: true,
+                    batchSize: batchSize,
+                    maxMessages: maxMessages ?? 0
+                )
+                let duration = Date().timeIntervalSince(startTime)
+                
+                let result = Result(
+                    status: "completed",
+                    source: "mail",
+                    duration_seconds: duration,
+                    items_processed: mailStats.itemsProcessed,
+                    items_created: mailStats.itemsCreated,
+                    errors: mailStats.errors
+                )
+                _ = printJSON(result)
+            } catch {
+                let duration = Date().timeIntervalSince(startTime)
+                let result = Result(
+                    status: "failed",
+                    source: "mail",
+                    duration_seconds: duration,
+                    items_processed: 0,
+                    items_created: 0,
+                    errors: 1
+                )
+                _ = printJSON(result)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            }
+        }
     }
 }
 

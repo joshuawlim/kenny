@@ -1,6 +1,6 @@
 # mac_tools
 
-A Swift command-line tool for deterministic macOS automation with JSON I/O, providing controlled access to Mail, Calendar, Reminders, Notes, and Files.
+A Swift command-line tool for deterministic macOS automation with JSON I/O, providing controlled access to Mail, Calendar, Reminders, Notes, Files, and Messages ingestion.
 
 ## Features
 
@@ -9,6 +9,8 @@ A Swift command-line tool for deterministic macOS automation with JSON I/O, prov
 - **Comprehensive Logging**: NDJSON logging with performance metrics
 - **TCC Permission Management**: Proactive permission requesting and validation
 - **Deterministic Output**: Consistent, sorted results for reliable automation
+- **Bulk Data Ingestion**: High-performance batch processing for Messages and other data sources
+- **Full-Text Search**: FTS5-powered search across ingested Messages with sub-25ms response times
 
 ## Requirements
 
@@ -173,6 +175,27 @@ Move files with collision detection:
 ./mac_tools files_move --src="/path/to/source.txt" --dst="/path/to/destination.txt" --confirm --plan-hash="ghi789..." --overwrite
 ```
 
+### Messages Ingestion
+
+Bulk ingest Messages data from Apple's chat.db with configurable batch processing:
+
+```bash
+# Basic Messages ingestion
+./mac_tools db_cli ingest messages
+
+# Bulk ingestion with custom batch size
+./mac_tools db_cli ingest messages --batch-size=1000 --max-messages=50000
+
+# Search ingested Messages (FTS5-powered)
+./mac_tools db_cli search "search term" --db-path=kenny.db
+```
+
+**Performance Metrics:**
+- Processes 26,000+ messages in seconds
+- Configurable batch sizes (default: 500 messages per batch)
+- Transaction isolation prevents data loss on failures
+- Sub-25ms search response times with FTS5 indexing
+
 ### TCC Permissions
 
 Request system permissions:
@@ -309,6 +332,24 @@ Measure performance across 20 runs:
 2. Use `--json-schema-strict` to catch malformed input early
 3. Check log files for detailed error information
 
+## Data Ingestion Roadmap
+
+The Messages ingestion system serves as the foundation for a systematic approach to ingesting all macOS data sources. The following data types are prioritized for implementation:
+
+### Completed
+- **Messages**: Bulk ingestion with batch processing, FTS5 search, transaction isolation
+
+### Next Implementation Targets (In Priority Order)
+1. **Contacts**: Address Book data ingestion
+2. **Mail**: Email headers and metadata processing  
+3. **Calendar**: Event and reminder data extraction
+4. **WhatsApp**: Third-party messaging data integration
+
+### CLI Ingestion Architecture Options
+Two approaches under consideration for the rebuild:
+- **Sequential Processing**: Process each data type individually with isolated transactions
+- **Parallel Processing**: Concurrent ingestion of all data types with coordinated error handling
+
 ## Development
 
 ### Building
@@ -342,6 +383,11 @@ Sources/mac_tools/
 │   ├── NotesAppend.swift
 │   ├── FilesMove.swift
 │   └── TCCRequest.swift
+├── Ingestion/             # Data ingestion system
+│   ├── IngestManager.swift   # Orchestrates all ingestion
+│   ├── MessagesIngester.swift # Messages bulk processing
+│   ├── DatabaseCLI.swift     # Database command interface
+│   └── kenny.db             # Target ingestion database
 └── Bridges/               # AppleScript bridges
     ├── MailBridge.applescript
     └── NotesBridge.applescript

@@ -85,9 +85,9 @@ public class IngestManager {
     }
     
     // MARK: - Mail Ingestion
-    public func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestMail(isFullSync: Bool, since: Date? = nil, batchSize: Int = 500, maxMessages: Int = 0) async throws -> IngestStats {
         let mailIngester = MailIngester(database: database)
-        return try await mailIngester.ingestMail(isFullSync: isFullSync, since: since)
+        return try await mailIngester.ingestMail(isFullSync: isFullSync, since: since, batchSize: batchSize, maxMessages: maxMessages)
     }
     
     // MARK: - Calendar Ingestion
@@ -396,7 +396,7 @@ public class IngestManager {
         return try await whatsappIngester.ingestWhatsApp(isFullSync: isFullSync, since: since)
     }
     
-    func ingestContacts(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestContacts(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         var stats = IngestStats(source: "contacts")
         print("DEBUG: Starting Contacts ingestion...")
         
@@ -454,7 +454,9 @@ public class IngestManager {
                         var contentParts: [String] = []
                         contentParts.append(contact.organizationName)
                         contentParts.append(contact.jobTitle)
-                        contentParts.append(contact.note)
+                        if contact.isKeyAvailable(CNContactNoteKey) {
+                            contentParts.append(contact.note)
+                        }
                         contentParts.append(contact.emailAddresses.map { $0.value as String }.joined(separator: " "))
                         contentParts.append(contact.phoneNumbers.map { $0.value.stringValue }.joined(separator: " "))
                         
@@ -476,20 +478,14 @@ public class IngestManager {
                         ]
                         
                         if self.database.insert("documents", data: docData) {
-                            let emails = contact.emailAddresses.map { ["label": $0.label ?? "", "value": $0.value as String] }
-                            let phones = contact.phoneNumbers.map { ["label": $0.label ?? "", "value": $0.value.stringValue] }
-                            let addresses = contact.postalAddresses.map { addr in
-                                let postal = addr.value
-                                return [
-                                    "label": addr.label ?? "",
-                                    "street": postal.street,
-                                    "city": postal.city,
-                                    "state": postal.state,
-                                    "postal_code": postal.postalCode,
-                                    "country": postal.country
-                                ]
-                            }
+                            // Extract and standardize phone numbers
+                            let rawPhones = contact.phoneNumbers.map { $0.value.stringValue }
+                            let standardizedPhones = rawPhones.map { self.standardizePhoneNumber($0) }
                             
+                            // Extract email addresses
+                            let emailAddresses = contact.emailAddresses.map { $0.value as String }
+                            
+                            // Process birthday
                             var birthday: Int? = nil
                             if let bday = contact.birthday {
                                 let calendar = Calendar.current
@@ -499,18 +495,32 @@ public class IngestManager {
                                 }
                             }
                             
+                            // Extract interests from social profiles and notes
+                            var interests: [String] = []
+                            if contact.isKeyAvailable(CNContactSocialProfilesKey) {
+                                interests.append(contentsOf: contact.socialProfiles.map { $0.value.service })
+                            }
+                            
+                            // Create unique contact_id for threading
+                            let contactId = "contact_\(contact.identifier)"
+                            
                             let contactData: [String: Any] = [
                                 "document_id": documentId,
-                                "first_name": contact.givenName,
-                                "last_name": contact.familyName,
+                                "contact_id": contactId,
+                                "first_name": contact.givenName ?? "",
+                                "last_name": contact.familyName ?? "",
                                 "full_name": fullName,
-                                "company": contact.organizationName,
-                                "job_title": contact.jobTitle,
-                                "emails": (try? JSONEncoder().encode(emails))?.base64EncodedString() ?? NSNull(),
-                                "phone_numbers": (try? JSONEncoder().encode(phones))?.base64EncodedString() ?? NSNull(),
-                                "addresses": (try? JSONEncoder().encode(addresses))?.base64EncodedString() ?? NSNull(),
+                                "primary_phone": standardizedPhones.count > 0 ? standardizedPhones[0] : NSNull(),
+                                "secondary_phone": standardizedPhones.count > 1 ? standardizedPhones[1] : NSNull(),
+                                "tertiary_phone": standardizedPhones.count > 2 ? standardizedPhones[2] : NSNull(),
+                                "primary_email": emailAddresses.count > 0 ? emailAddresses[0] : NSNull(),
+                                "secondary_email": emailAddresses.count > 1 ? emailAddresses[1] : NSNull(),
+                                "company": contact.organizationName ?? "",
+                                "job_title": contact.jobTitle ?? "",
                                 "birthday": birthday ?? NSNull(),
-                                "notes": contact.note,
+                                "interests": interests.isEmpty ? NSNull() : interests.joined(separator: ", "),
+                                "notes": contact.isKeyAvailable(CNContactNoteKey) ? contact.note : "",
+                                "date_last_interaction": now,
                                 "image_path": contact.imageData != nil ? "contact_image_\(contact.identifier)" : NSNull()
                             ]
                             
@@ -668,6 +678,39 @@ public class IngestManager {
             return String(urlString.dropFirst(7)) // Remove "mailto:"
         }
         return urlString
+    }
+    
+    private func standardizePhoneNumber(_ phone: String) -> String {
+        // Remove all non-digit characters except +
+        let cleaned = phone.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
+        
+        // If already has country code, return as-is
+        if cleaned.hasPrefix("+") {
+            return cleaned
+        }
+        
+        // Australian mobile numbers (start with 04, total 10 digits)
+        if cleaned.hasPrefix("04") && cleaned.count == 10 {
+            return "+61" + String(cleaned.dropFirst()) // Remove leading 0, add +61
+        }
+        
+        // Singapore mobile numbers (8 digits, likely mobile if starts with 8 or 9)
+        if cleaned.count == 8 && (cleaned.hasPrefix("8") || cleaned.hasPrefix("9")) {
+            return "+65" + cleaned
+        }
+        
+        // Australian landline (8 digits starting with non-mobile prefix)
+        if cleaned.count == 8 && !cleaned.hasPrefix("04") {
+            return "+61" + cleaned // Assume Sydney/Melbourne area
+        }
+        
+        // If 11 digits starting with 61, assume already formatted Australian without +
+        if cleaned.count == 11 && cleaned.hasPrefix("61") {
+            return "+" + cleaned
+        }
+        
+        // Default: return cleaned number (may need manual review)
+        return cleaned.isEmpty ? phone : cleaned
     }
     
     private func getLastIngestTimes() -> [String: Date] {
