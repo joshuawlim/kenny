@@ -85,7 +85,7 @@ public class IngestManager {
     }
     
     // MARK: - Mail Ingestion
-    func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestMail(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let mailIngester = MailIngester(database: database)
         return try await mailIngester.ingestMail(isFullSync: isFullSync, since: since)
     }
@@ -382,8 +382,12 @@ public class IngestManager {
         return try await filesIngester.ingestFiles(isFullSync: isFullSync, since: since)
     }
     
-    func ingestMessages(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestMessages(isFullSync: Bool, since: Date? = nil, batchSize: Int = 500, maxMessages: Int? = nil) async throws -> IngestStats {
         let messagesIngester = MessagesIngester(database: database)
+        
+        // Use the proven legacy method with fixed 50K limit for full 30K message ingestion
+        print("[IngestManager] Using legacy Messages ingestion with increased limit: batchSize=\(batchSize), maxMessages=\(maxMessages?.description ?? "unlimited")")
+        
         return try await messagesIngester.ingestMessages(isFullSync: isFullSync, since: since)
     }
     
@@ -717,15 +721,19 @@ public class IngestManager {
 }
 
 // MARK: - Data Structures
-struct IngestStats {
-    var source: String = ""
-    var itemsProcessed: Int = 0
-    var itemsCreated: Int = 0
-    var itemsUpdated: Int = 0
-    var errors: Int = 0
-    var duration: TimeInterval = 0
+public struct IngestStats {
+    public var source: String = ""
+    public var itemsProcessed: Int = 0
+    public var itemsCreated: Int = 0
+    public var itemsUpdated: Int = 0
+    public var errors: Int = 0
+    public var duration: TimeInterval = 0
     
-    mutating func combine(with other: IngestStats) {
+    public init(source: String = "") {
+        self.source = source
+    }
+    
+    public mutating func combine(with other: IngestStats) {
         itemsProcessed += other.itemsProcessed
         itemsCreated += other.itemsCreated
         itemsUpdated += other.itemsUpdated
