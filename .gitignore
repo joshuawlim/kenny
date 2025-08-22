@@ -67,4 +67,4 @@ logs/
 .cache/
 
 # External development tools
-tools/whatsapp-mcp/
+tools/whatsapp-mcp/kenny.db

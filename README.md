@@ -109,13 +109,13 @@ This command will:
 #### 1. Search Across All Data Sources
 ```bash
 # Search for people across all platforms
-swift run orchestrator_cli search "Courtney" --limit 5
+cd mac_tools && swift run orchestrator_cli search "Courtney" --limit 5
 
 # Search for topics across messages and emails
-swift run orchestrator_cli search "meeting" --limit 10
+cd mac_tools && swift run orchestrator_cli search "meeting" --limit 10
 
 # Search for WhatsApp conversations
-swift run orchestrator_cli search "landed" --limit 3
+cd mac_tools && swift run orchestrator_cli search "landed" --limit 3
 ```
 
 #### 2. Database Status and Statistics
