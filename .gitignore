@@ -40,6 +40,20 @@ assistant.db
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+raw/
+transformed/
+
+# Database Policy - IMPORTANT
+# The ONLY kenny database should be at mac_tools/kenny.db
+# Block any kenny databases in wrong locations:
+/kenny.db
+/kenny_*.db
+kenny_test.db
+kenny_enhanced.db
+kenny_data.db
+# But allow the correct one and backups:
+!mac_tools/kenny.db
+mac_tools/kenny_backup_*.db
 
 # Application Support (contains user data)
 Library/
