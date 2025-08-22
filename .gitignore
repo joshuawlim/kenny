@@ -51,3 +51,6 @@ logs/
 # Temporary files
 *.tmp
 .cache/
+
+# External development tools
+tools/whatsapp-mcp/
