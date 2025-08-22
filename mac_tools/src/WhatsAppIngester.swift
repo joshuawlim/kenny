@@ -43,7 +43,9 @@ class WhatsAppIngester {
     private func findWhatsAppDatabase() -> String? {
         // First, try to find the Go bridge database (our WhatsApp logger)
         let bridgePaths = [
+            "/Users/joshwlim/Documents/Kenny/tools/whatsapp/whatsapp_messages.db",
             "tools/whatsapp/whatsapp_messages.db",
+            "../tools/whatsapp/whatsapp_messages.db",
             "./whatsapp_messages.db",
             "../whatsapp-logger/whatsapp_messages.db"
         ]

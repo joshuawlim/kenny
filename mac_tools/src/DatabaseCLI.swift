@@ -15,6 +15,7 @@ struct DatabaseCLI: AsyncParsableCommand {
             IngestContactsOnly.self,
             IngestMailOnly.self,
             IngestCalendarOnly.self,
+            IngestWhatsAppOnly.self,
             Search.self,
             TestQueries.self,
             Stats.self,
@@ -1021,6 +1022,104 @@ struct IngestCalendarOnly: AsyncParsableCommand {
                 _ = printJSON(result)
                 FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
             }
+        }
+    }
+}
+
+struct IngestWhatsAppOnly: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ingest_whatsapp_only",
+        abstract: "Run WhatsApp ingestion only (isolated)"
+    )
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Flag(name: .customLong("dry-run"), help: "Dry run mode")
+    var dryRun: Bool = false
+    
+    @Option(name: .customLong("operation-hash"), help: "Operation hash for confirmation")
+    var operationHash: String?
+    
+    func run() async throws {
+        // Safety enforcement
+        let parameters: [String: Any] = [
+            "db_path": dbPath ?? "default",
+            "source": "whatsapp_only"
+        ]
+        
+        do {
+            try CLISafety.shared.confirmOperation(
+                operation: "ingest_whatsapp_only",
+                parameters: parameters,
+                providedHash: operationHash
+            )
+        } catch CLISafetyError.confirmationRequired(let operation, let expectedHash) {
+            if dryRun {
+                let dryRunResult: [String: Any] = [
+                    "status": "dry_run_complete",
+                    "would_process": "WhatsApp messages only",
+                    "estimated_duration": "30-60 seconds"
+                ]
+                
+                print(CLISafety.shared.showConfirmationPrompt(
+                    operation: operation,
+                    parameters: parameters,
+                    dryRunResult: dryRunResult
+                ))
+                return
+            } else {
+                print("⚠️  Mutating operation requires dry-run first.")
+                print("Run with --dry-run to preview, then use provided hash to confirm.")
+                return
+            }
+        } catch {
+            print("❌ Safety check failed: \(error.localizedDescription)")
+            return
+        }
+        
+        let db = Database(path: dbPath)
+        let ingestManager = IngestManager(database: db)
+        
+        struct Result: Codable {
+            let status: String
+            let source: String
+            let duration_seconds: Double
+            let items_processed: Int
+            let items_created: Int
+            let errors: Int
+        }
+        
+        let startTime = Date()
+        
+        do {
+            print("Starting WhatsApp ingestion...")
+            let stats = try await ingestManager.ingestWhatsApp(isFullSync: true, since: nil)
+            let duration = Date().timeIntervalSince(startTime)
+            
+            let result = Result(
+                status: "completed",
+                source: "whatsapp",
+                duration_seconds: duration,
+                items_processed: stats.itemsProcessed,
+                items_created: stats.itemsCreated,
+                errors: stats.errors
+            )
+            
+            _ = printJSON(result)
+            
+        } catch {
+            let duration = Date().timeIntervalSince(startTime)
+            let result = Result(
+                status: "failed",
+                source: "whatsapp",
+                duration_seconds: duration,
+                items_processed: 0,
+                items_created: 0,
+                errors: 1
+            )
+            _ = printJSON(result)
+            FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
         }
     }
 }

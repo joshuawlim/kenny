@@ -397,7 +397,7 @@ public class IngestManager {
         return try await messagesIngester.ingestMessages(isFullSync: isFullSync, since: since)
     }
     
-    private func ingestWhatsApp(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
+    public func ingestWhatsApp(isFullSync: Bool, since: Date? = nil) async throws -> IngestStats {
         let whatsappIngester = WhatsAppIngester(database: database)
         return try await whatsappIngester.ingestWhatsApp(isFullSync: isFullSync, since: since)
     }
