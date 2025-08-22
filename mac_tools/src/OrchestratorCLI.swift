@@ -35,7 +35,9 @@ struct SearchCommand: ParsableCommand {
     var types: String = ""
     
     func run() throws {
-        let database = Database()
+        // Use kenny.db in mac_tools directory as source of truth
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
         let typeFilter = types.isEmpty ? [] : types.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -78,7 +80,9 @@ struct IngestCommand: ParsableCommand {
     var fullSync: Bool = false
     
     func run() throws {
-        let database = Database()
+        // Use kenny.db in mac_tools directory as source of truth
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
         let sourceFilter = sources.isEmpty ? [] : sources.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -114,7 +118,9 @@ struct StatusCommand: ParsableCommand {
     )
     
     func run() throws {
-        let database = Database()
+        // Use kenny.db in mac_tools directory as source of truth
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
         let request = UserRequest(type: .status)
