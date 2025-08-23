@@ -71,7 +71,8 @@ let package = Package(
                 "MeetingSlotProposer.swift",
                 "EmailDrafter.swift",
                 "MeetingLinkGenerator.swift",
-                "FollowUpTracker.swift"
+                "FollowUpTracker.swift",
+                "NaturalLanguageProcessor.swift"
             ]
         ),
         .executableTarget(

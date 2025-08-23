@@ -1,6 +1,12 @@
 import Foundation
 import SQLite3
 
+public enum EmbeddingIngestionError: Error {
+    case databaseError(String)
+    case embeddingGenerationFailed(String)
+    case chunkingFailed(String)
+}
+
 public class EmbeddingIngester {
     private let database: Database
     private let embeddingsService: EmbeddingsService
@@ -118,18 +124,29 @@ public class EmbeddingIngester {
     }
     
     private func deleteExistingChunks(for documentId: String) throws {
-        print("Deleting existing chunks for document: \(documentId)")
-        // For now, skip deletion - we'll handle duplicates later
+        let sql = "DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)"
+        if !database.execute(sql, parameters: [documentId]) {
+            throw EmbeddingIngestionError.databaseError("Failed to delete existing embeddings for document \(documentId)")
+        }
+        
+        let chunkSql = "DELETE FROM chunks WHERE document_id = ?"
+        if !database.execute(chunkSql, parameters: [documentId]) {
+            throw EmbeddingIngestionError.databaseError("Failed to delete existing chunks for document \(documentId)")
+        }
     }
     
     private func saveChunk(_ chunk: EmbeddingChunk) throws {
-        print("Would save chunk: \(chunk.id)")
-        // For now, skip saving chunks - we'll implement this properly later
+        // Use the Database class's existing storeChunks method which is more robust
+        if !database.storeChunks([chunk]) {
+            throw EmbeddingIngestionError.databaseError("Failed to store chunk \(chunk.id)")
+        }
     }
     
     private func saveEmbedding(chunkId: String, vector: [Float], model: EmbeddingModel) throws {
-        print("Would save embedding for chunk: \(chunkId) with \(vector.count) dimensions")
-        // For now, skip saving embeddings - we'll implement this properly later
+        // Use the Database class's existing storeEmbedding method which is more robust
+        if !database.storeEmbedding(chunkId: chunkId, vector: vector, model: model.rawValue) {
+            throw EmbeddingIngestionError.databaseError("Failed to store embedding for chunk \(chunkId)")
+        }
     }
 }
 

@@ -77,6 +77,46 @@ public class Database {
         return true
     }
     
+    @discardableResult
+    func execute(_ sql: String, parameters: [Any]) -> Bool {
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            print("ERROR preparing parameterized statement: \(String(cString: sqlite3_errmsg(db)))")
+            print("SQL was: \(sql)")
+            return false
+        }
+        
+        // Bind parameters
+        for (index, param) in parameters.enumerated() {
+            let bindIndex = Int32(index + 1)
+            if let stringParam = param as? String {
+                sqlite3_bind_text(stmt, bindIndex, stringParam, Int32(stringParam.utf8.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            } else if let intParam = param as? Int {
+                sqlite3_bind_int64(stmt, bindIndex, Int64(intParam))
+            } else if let doubleParam = param as? Double {
+                sqlite3_bind_double(stmt, bindIndex, doubleParam)
+            } else if let dataParam = param as? Data {
+                _ = dataParam.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob(stmt, bindIndex, bytes.baseAddress, Int32(dataParam.count), nil)
+                }
+            } else if param is NSNull {
+                sqlite3_bind_null(stmt, bindIndex)
+            }
+        }
+        
+        let result = sqlite3_step(stmt)
+        if result != SQLITE_DONE && result != SQLITE_ROW {
+            let error = String(cString: sqlite3_errmsg(db))
+            print("ERROR executing parameterized statement: \(error)")
+            print("SQL was: \(sql)")
+            return false
+        }
+        
+        return true
+    }
+    
     /// Parse SQL string into individual statements, handling comments and multi-line constructs
     private func parseMultipleStatements(_ sql: String) -> [String] {
         var statements: [String] = []
@@ -251,6 +291,49 @@ public class Database {
         
         if sqlite3_step(statement) != SQLITE_DONE {
             print("ERROR executing insert: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        return true
+    }
+    
+    public func insertOrReplace(_ table: String, data: [String: Any]) -> Bool {
+        let sortedKeys = data.keys.sorted()
+        let columns = sortedKeys.joined(separator: ", ")
+        let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
+        let sql = "INSERT OR REPLACE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+        
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            print("ERROR preparing insert or replace: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        // Bind parameters in same order as columns
+        for (index, key) in sortedKeys.enumerated() {
+            let value = data[key]
+            let bindIndex = Int32(index + 1)
+            
+            if let stringVal = value as? String {
+                // Use SQLITE_TRANSIENT to force SQLite to make its own copy of the string
+                sqlite3_bind_text(statement, bindIndex, stringVal, Int32(stringVal.utf8.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            } else if let intVal = value as? Int {
+                sqlite3_bind_int64(statement, bindIndex, Int64(intVal))
+            } else if let doubleVal = value as? Double {
+                sqlite3_bind_double(statement, bindIndex, doubleVal)
+            } else if let dataVal = value as? Data {
+                _ = dataVal.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob(statement, bindIndex, bytes.baseAddress, Int32(dataVal.count), nil)
+                }
+            } else if value is NSNull {
+                sqlite3_bind_null(statement, bindIndex)
+            }
+        }
+        
+        if sqlite3_step(statement) != SQLITE_DONE {
+            print("ERROR executing insert or replace: \(String(cString: sqlite3_errmsg(db)))")
             return false
         }
         

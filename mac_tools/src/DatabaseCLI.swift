@@ -20,7 +20,8 @@ struct DatabaseCLI: AsyncParsableCommand {
             TestQueries.self,
             Stats.self,
             IngestEmbeddings.self,
-            HybridSearchCommand.self
+            HybridSearchCommand.self,
+            NaturalLanguageCommand.self
         ]
     )
 }
@@ -366,7 +367,7 @@ struct Stats: ParsableCommand {
     }
 }
 
-struct IngestEmbeddings: ParsableCommand {
+struct IngestEmbeddings: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "ingest_embeddings",
         abstract: "Generate embeddings for all documents"
@@ -468,7 +469,7 @@ struct IngestEmbeddings: ParsableCommand {
     }
 }
 
-struct HybridSearchCommand: ParsableCommand {
+struct HybridSearchCommand: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         commandName: "hybrid_search",
         abstract: "Search using hybrid BM25 + embeddings"
@@ -1120,6 +1121,145 @@ struct IngestWhatsAppOnly: AsyncParsableCommand {
             )
             _ = printJSON(result)
             FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+        }
+    }
+}
+
+struct NaturalLanguageCommand: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "nlp",
+        abstract: "Process natural language queries with semantic understanding"
+    )
+    
+    @Argument(help: "Natural language query")
+    var query: String
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String?
+    
+    @Option(help: "Maximum results")
+    var limit: Int = 10
+    
+    func run() async throws {
+        let db = Database(path: dbPath)
+        let embeddingsService = EmbeddingsService()
+        let hybridSearch = HybridSearch(
+            database: db,
+            embeddingsService: embeddingsService
+        )
+        
+        let nlp = NaturalLanguageProcessor()
+        let executor = QueryExecutor(hybridSearch: hybridSearch, database: db)
+        
+        struct NLPResponse: Codable {
+            let original_query: String
+            let parsed_intent: String
+            let results: [ResultItem]
+            let applied_filters: [String]
+            let processing_time_ms: Int
+        }
+        
+        struct ResultItem: Codable {
+            let document_id: String
+            let title: String
+            let snippet: String
+            let score: Float
+            let app_source: String
+            let source_path: String?
+        }
+        
+        let startTime = Date()
+        let intent = nlp.parseQuery(query)
+        let result = try await executor.execute(intent)
+        let duration = Int(Date().timeIntervalSince(startTime).rounded(.up) * 1000)
+        
+        switch result {
+        case .search(let searchResult):
+            let resultItems = searchResult.results.map { result in
+                ResultItem(
+                    document_id: result.documentId,
+                    title: result.title,
+                    snippet: result.snippet,
+                    score: result.score,
+                    app_source: result.appSource,
+                    source_path: result.sourcePath
+                )
+            }
+            
+            let response = NLPResponse(
+                original_query: query,
+                parsed_intent: describeIntent(intent),
+                results: resultItems,
+                applied_filters: searchResult.appliedFilters,
+                processing_time_ms: duration
+            )
+            
+            _ = printJSON(response)
+            
+        case .answer(let answerResult):
+            struct AnswerResponse: Codable {
+                let original_query: String
+                let parsed_intent: String
+                let answer: String
+                let confidence: Double
+                let source_count: Int
+                let processing_time_ms: Int
+            }
+            
+            let answerResponse = AnswerResponse(
+                original_query: query,
+                parsed_intent: describeIntent(intent),
+                answer: answerResult.answer,
+                confidence: answerResult.confidence,
+                source_count: answerResult.sources.count,
+                processing_time_ms: duration
+            )
+            
+            _ = printJSON(answerResponse)
+            
+        case .command(let commandResult):
+            struct CommandResponse: Codable {
+                let original_query: String
+                let parsed_intent: String
+                let action: String
+                let status: String
+                let message: String
+                let processing_time_ms: Int
+            }
+            
+            let commandResponse = CommandResponse(
+                original_query: query,
+                parsed_intent: describeIntent(intent),
+                action: "\(commandResult.action)",
+                status: commandResult.status,
+                message: commandResult.message,
+                processing_time_ms: duration
+            )
+            
+            _ = printJSON(commandResponse)
+        }
+    }
+    
+    private func describeIntent(_ intent: QueryIntent) -> String {
+        switch intent {
+        case .search(let searchQuery):
+            var description = "Search for '\(searchQuery.content)'"
+            if !searchQuery.entityFilters.isEmpty {
+                description += " with entity filters"
+            }
+            if let sources = searchQuery.sourceFilter {
+                description += " in sources: \(sources.joined(separator: ", "))"
+            }
+            return description
+            
+        case .filter(let filterQuery):
+            return "Filter query: '\(filterQuery.baseQuery)'"
+            
+        case .ask(let questionQuery):
+            return "Question: '\(questionQuery.question)' expecting \(questionQuery.expectedAnswerType)"
+            
+        case .command(let commandQuery):
+            return "Command: \(commandQuery.action) on '\(commandQuery.target)'"
         }
     }
 }
