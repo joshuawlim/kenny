@@ -199,13 +199,13 @@ public class CalendarIngester {
             "deleted": false
         ]
         
-        guard database.insert("documents", data: docData) else {
+        guard database.insertOrReplace("documents", data: docData) else {
             throw CalendarIngestionError.documentInsertFailed("Failed to insert document for event: \(event.title ?? "Untitled")")
         }
         
         // Insert into events table
         let eventData = buildEventData(event, documentId: documentId)
-        guard database.insert("events", data: eventData) else {
+        guard database.insertOrReplace("events", data: eventData) else {
             throw CalendarIngestionError.eventInsertFailed("Failed to insert event data for: \(event.title ?? "Untitled")")
         }
     }

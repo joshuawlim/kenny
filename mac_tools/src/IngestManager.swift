@@ -198,7 +198,7 @@ public class IngestManager {
                 "deleted": false
             ]
             
-            if self.database.insert("documents", data: docData) {
+            if self.database.insertOrReplace("documents", data: docData) {
                 // Prepare attendees with full details
                 let attendees = event.attendees?.map { attendee in
                     return [
@@ -217,7 +217,7 @@ public class IngestManager {
                     "location": event.location ?? ""
                 ]
                 
-                if !self.database.insert("events", data: eventData) {
+                if !self.database.insertOrReplace("events", data: eventData) {
                     stats.errors += 1
                 }
             } else {
@@ -332,7 +332,7 @@ public class IngestManager {
             "deleted": false
         ]
         
-        if database.insert("documents", data: docData) {
+        if database.insertOrReplace("documents", data: docData) {
             var dueDate: Int? = nil
             if let dueDateComponents = reminder.dueDateComponents,
                let date = Calendar.current.date(from: dueDateComponents) {
@@ -354,7 +354,7 @@ public class IngestManager {
                 "notes": reminder.notes ?? NSNull()
             ]
             
-            if !database.insert("reminders", data: reminderData) {
+            if !database.insertOrReplace("reminders", data: reminderData) {
                 stats.errors += 1
             }
         } else {
@@ -484,7 +484,7 @@ public class IngestManager {
                             "deleted": false
                         ]
                         
-                        if self.database.insert("documents", data: docData) {
+                        if self.database.insertOrReplace("documents", data: docData) {
                             // Extract and standardize phone numbers
                             let rawPhones = contact.phoneNumbers.map { $0.value.stringValue }
                             let standardizedPhones = rawPhones.map { self.standardizePhoneNumber($0) }
@@ -531,7 +531,7 @@ public class IngestManager {
                                 "image_path": contact.imageData != nil ? "contact_image_\(contact.identifier)" : NSNull()
                             ]
                             
-                            if self.database.insert("contacts", data: contactData) {
+                            if self.database.insertOrReplace("contacts", data: contactData) {
                                 stats.itemsCreated += 1
                                 
                                 // Save contact image if available

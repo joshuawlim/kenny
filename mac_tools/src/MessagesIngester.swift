@@ -422,7 +422,7 @@ class MessagesIngester {
                 print("  content length: \(searchableContent.count)")
             }
             
-            if database.insert("documents", data: docData) {
+            if database.insertOrReplace("documents", data: docData) {
                 // Insert message-specific data
                 let messageSpecificData: [String: Any] = [
                     "document_id": documentId,
@@ -436,7 +436,7 @@ class MessagesIngester {
                     "has_attachments": false
                 ]
                 
-                if database.insert("messages", data: messageSpecificData) {
+                if database.insertOrReplace("messages", data: messageSpecificData) {
                     if processed <= 2 {
                         print("[Messages] ✅ Message \(processed) inserted: '\(textContent.prefix(30))...'")
                     }
@@ -964,7 +964,7 @@ class MessagesIngester {
         fflush(stdout)
         print("CRASH-DEBUG: Calling database.insert for documents...")
         fflush(stdout)
-        let documentInsertResult = database.insert("documents", data: docData)
+        let documentInsertResult = database.insertOrReplace("documents", data: docData)
         print("DEBUG: Document insert result: \(documentInsertResult)")
         fflush(stdout)
         if documentInsertResult {
@@ -985,7 +985,7 @@ class MessagesIngester {
             fflush(stdout)
             print("CRASH-DEBUG: Calling database.insert for messages...")
             fflush(stdout)
-            let messageInsertResult = database.insert("messages", data: messageSpecificData)
+            let messageInsertResult = database.insertOrReplace("messages", data: messageSpecificData)
             print("DEBUG: Message insert result: \(messageInsertResult)")
             fflush(stdout)
             if messageInsertResult {

@@ -128,7 +128,7 @@ class MailIngester {
                 "deleted": false
             ]
             
-            if database.insert("documents", data: docData) {
+            if database.insertOrReplace("documents", data: docData) {
                 let emailData: [String: Any] = [
                     "document_id": documentId,
                     "message_id": originalId,
@@ -141,7 +141,7 @@ class MailIngester {
                     "mailbox": mailbox
                 ]
                 
-                if database.insert("emails", data: emailData) {
+                if database.insertOrReplace("emails", data: emailData) {
                     stats.itemsCreated += 1
                 } else {
                     stats.errors += 1
@@ -359,7 +359,7 @@ class MailIngester {
             "deleted": false
         ]
         
-        if database.insert("documents", data: docData) {
+        if database.insertOrReplace("documents", data: docData) {
             // Parse sender email and name
             let senderString = sender
             let (fromName, fromEmail) = parseSenderString(senderString)
@@ -377,7 +377,7 @@ class MailIngester {
                 "snippet": String(content.prefix(200))
             ]
             
-            if database.insert("emails", data: emailSpecificData) {
+            if database.insertOrReplace("emails", data: emailSpecificData) {
                 stats.itemsCreated += 1
                 
                 // Try to create relationships with contacts

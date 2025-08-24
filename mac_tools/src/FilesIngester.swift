@@ -124,7 +124,7 @@ class FilesIngester {
             "deleted": false
         ]
         
-        if database.insert("documents", data: docData) {
+        if database.insertOrReplace("documents", data: docData) {
             let fileData: [String: Any] = [
                 "document_id": documentId,
                 "file_path": filePath,
@@ -139,7 +139,7 @@ class FilesIngester {
                 "spotlight_content": textContent ?? NSNull()
             ]
             
-            if !database.insert("files", data: fileData) {
+            if !database.insertOrReplace("files", data: fileData) {
                 stats.errors += 1
             }
         } else {

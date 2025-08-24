@@ -379,9 +379,8 @@ class WhatsAppIngester {
             "deleted": false
         ]
         
-        // DEBUG removed - Database bug fixed
-        
-        if database.insert("documents", data: docData) {
+        // Use INSERT OR REPLACE to handle idempotency properly
+        if database.insertOrReplace("documents", data: docData) {
             let messageSpecificData: [String: Any] = [
                 "document_id": documentId,
                 "thread_id": chatId,
@@ -394,7 +393,7 @@ class WhatsAppIngester {
                 "has_attachments": messageType != 0
             ]
             
-            if database.insert("messages", data: messageSpecificData) {
+            if database.insertOrReplace("messages", data: messageSpecificData) {
                 stats.itemsCreated += 1
                 
                 // Try to create relationships with contacts
