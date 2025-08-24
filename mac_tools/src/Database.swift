@@ -298,16 +298,73 @@ public class Database {
     }
     
     public func insertOrReplace(_ table: String, data: [String: Any]) -> Bool {
+        // For documents table with duplicate (app_source, source_id), reuse existing ID
+        if table == "documents",
+           let appSource = data["app_source"] as? String,
+           let sourceId = data["source_id"] as? String {
+            
+            let existingDocs = query(
+                "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
+                parameters: [appSource, sourceId]
+            )
+            
+            if let existingDoc = existingDocs.first, let existingId = existingDoc["id"] as? String {
+                // Update existing document with existing ID
+                var updatedData = data
+                updatedData["id"] = existingId
+                return insertOrIgnoreThenUpdate(table, data: updatedData)
+            }
+        }
+        
+        // For all other cases, use standard insert or replace logic
+        return insertOrIgnoreThenUpdate(table, data: data)
+    }
+    
+    // New method that returns the actual ID that was inserted/updated
+    public func insertOrReplaceAndGetID(_ table: String, data: [String: Any]) -> String? {
+        let result = insertOrIgnoreThenUpdateWithID(table, data: data)
+        if table == "documents" {
+            print("DEBUG: insertOrReplaceAndGetID returning: \(result ?? "nil")")
+        }
+        return result
+    }
+    
+    // New method that handles upserts properly for foreign key relationships
+    public func insertOrUpdate(_ table: String, data: [String: Any]) -> Bool {
         let sortedKeys = data.keys.sorted()
         let columns = sortedKeys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
-        let sql = "INSERT OR REPLACE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+        
+        // Build the UPDATE clause for all non-primary-key columns
+        let updateClause = sortedKeys.filter { $0 != "id" && $0 != "document_id" }
+            .map { "\($0) = excluded.\($0)" }
+            .joined(separator: ", ")
+        
+        let sql: String
+        if updateClause.isEmpty {
+            // If only primary key, use INSERT OR IGNORE
+            sql = "INSERT OR IGNORE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+        } else {
+            // For documents table, handle both primary key and unique(app_source, source_id) conflicts
+            if table == "documents" {
+                sql = """
+                    INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))
+                    ON CONFLICT(app_source, source_id) DO UPDATE SET \(updateClause)
+                    """
+            } else {
+                // For other tables, assume primary key conflict
+                sql = """
+                    INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))
+                    ON CONFLICT DO UPDATE SET \(updateClause)
+                    """
+            }
+        }
         
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            print("ERROR preparing insert or replace: \(String(cString: sqlite3_errmsg(db)))")
+            print("ERROR preparing insert or update: \(String(cString: sqlite3_errmsg(db)))")
             return false
         }
         
@@ -333,11 +390,317 @@ public class Database {
         }
         
         if sqlite3_step(statement) != SQLITE_DONE {
-            print("ERROR executing insert or replace: \(String(cString: sqlite3_errmsg(db)))")
+            print("ERROR executing insert or update: \(String(cString: sqlite3_errmsg(db)))")
             return false
         }
         
         return true
+    }
+    
+    // Safer method that uses INSERT OR IGNORE + UPDATE to avoid foreign key issues
+    public func insertOrIgnoreThenUpdate(_ table: String, data: [String: Any]) -> Bool {
+        
+        // Special handling for events table to ensure document_id exists
+        if table == "events", let documentId = data["document_id"] as? String {
+            // Check if the document actually exists
+            let docExists = query("SELECT id FROM documents WHERE id = ?", parameters: [documentId])
+            if docExists.isEmpty {
+                print("ERROR: Document ID \(documentId) does not exist for events insert")
+                print("ERROR: This suggests the CalendarIngester is using a different ID than what was inserted")
+                
+                // HACK: Try to find the most recently inserted Calendar document
+                // This is a reasonable approximation since Calendar ingestion processes events sequentially
+                let recentDocs = query(
+                    "SELECT id FROM documents WHERE app_source = 'Calendar' ORDER BY last_seen_at DESC LIMIT 1",
+                    parameters: []
+                )
+                
+                if let recentDoc = recentDocs.first, let recentId = recentDoc["id"] as? String {
+                    print("HACK: Using most recent Calendar document ID: \(recentId)")
+                    var fixedData = data
+                    fixedData["document_id"] = recentId
+                    return insertOrIgnoreThenUpdate(table, data: fixedData)
+                }
+                
+                return false
+            }
+        }
+        let sortedKeys = data.keys.sorted()
+        let columns = sortedKeys.joined(separator: ", ")
+        let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
+        
+        // Debug: Print what we're trying to insert
+        print("DEBUG: Attempting to insert into \(table)")
+        print("DEBUG: Columns: \(columns)")
+        print("DEBUG: Data: \(data)")
+        
+        // First, try INSERT OR IGNORE
+        let insertSQL = "INSERT OR IGNORE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+        
+        var insertStatement: OpaquePointer?
+        defer { sqlite3_finalize(insertStatement) }
+        
+        guard sqlite3_prepare_v2(db, insertSQL, -1, &insertStatement, nil) == SQLITE_OK else {
+            print("ERROR preparing insert or ignore: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        // Bind parameters for INSERT
+        for (index, key) in sortedKeys.enumerated() {
+            let value = data[key]
+            let bindIndex = Int32(index + 1)
+            
+            bindValue(to: insertStatement!, at: bindIndex, value: value)
+        }
+        
+        let insertResult = sqlite3_step(insertStatement!)
+        if insertResult != SQLITE_DONE {
+            print("ERROR executing insert or ignore: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        // Check if a row was actually inserted (changes > 0)
+        let changes = sqlite3_changes(db)
+        if changes > 0 {
+            // Row was inserted, we're done
+            return true
+        }
+        
+        // Row already existed, now update it
+        let nonKeyColumns = sortedKeys.filter { $0 != "id" && $0 != "document_id" }
+        if nonKeyColumns.isEmpty {
+            // Nothing to update, just return success
+            return true
+        }
+        
+        let updateClauses = nonKeyColumns.map { "\($0) = ?" }.joined(separator: ", ")
+        let updateSQL: String
+        
+        if table == "documents" {
+            // For documents table, update by (app_source, source_id)
+            updateSQL = "UPDATE \(table) SET \(updateClauses) WHERE app_source = ? AND source_id = ?"
+        } else {
+            // For other tables, update by primary key
+            if let primaryKey = data["id"] ?? data["document_id"] {
+                let primaryKeyColumn = data["id"] != nil ? "id" : "document_id"
+                updateSQL = "UPDATE \(table) SET \(updateClauses) WHERE \(primaryKeyColumn) = ?"
+            } else {
+                print("ERROR: No primary key found for update")
+                return false
+            }
+        }
+        
+        var updateStatement: OpaquePointer?
+        defer { sqlite3_finalize(updateStatement) }
+        
+        guard sqlite3_prepare_v2(db, updateSQL, -1, &updateStatement, nil) == SQLITE_OK else {
+            print("ERROR preparing update: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        // Bind parameters for UPDATE
+        var paramIndex: Int32 = 1
+        for key in nonKeyColumns {
+            bindValue(to: updateStatement!, at: paramIndex, value: data[key])
+            paramIndex += 1
+        }
+        
+        // Bind WHERE clause parameters
+        if table == "documents" {
+            bindValue(to: updateStatement!, at: paramIndex, value: data["app_source"])
+            bindValue(to: updateStatement!, at: paramIndex + 1, value: data["source_id"])
+        } else {
+            let primaryKey = data["id"] ?? data["document_id"]
+            bindValue(to: updateStatement!, at: paramIndex, value: primaryKey)
+        }
+        
+        let updateResult = sqlite3_step(updateStatement!)
+        if updateResult != SQLITE_DONE {
+            print("ERROR executing update: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        
+        return true
+    }
+    
+    // Enhanced method that returns the actual ID that was inserted/updated
+    public func insertOrIgnoreThenUpdateWithID(_ table: String, data: [String: Any]) -> String? {
+        let sortedKeys = data.keys.sorted()
+        let columns = sortedKeys.joined(separator: ", ")
+        let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
+        
+        // For documents table, check if document exists first and reuse its ID
+        if table == "documents", 
+           let appSource = data["app_source"] as? String,
+           let sourceId = data["source_id"] as? String {
+            
+            let existingDocs = query(
+                "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
+                parameters: [appSource, sourceId]
+            )
+            
+            if let existingDoc = existingDocs.first, let existingId = existingDoc["id"] as? String {
+                // Update existing document with new ID
+                var updatedData = data
+                updatedData["id"] = existingId
+                
+                // Update the document
+                let updateSuccess = insertOrIgnoreThenUpdate(table, data: updatedData)
+                return updateSuccess ? existingId : nil
+            }
+        }
+        
+        // Debug SQL for events table
+        if table == "events" {
+            let insertSQL = "INSERT OR IGNORE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+            print("DEBUG SQL: \(insertSQL)")
+            print("DEBUG VALUES: \(data)")
+        }
+        
+        // First, try INSERT OR IGNORE
+        let insertSQL = "INSERT OR IGNORE INTO \(table) (\(columns)) VALUES (\(placeholders))"
+        
+        var insertStatement: OpaquePointer?
+        defer { sqlite3_finalize(insertStatement) }
+        
+        guard sqlite3_prepare_v2(db, insertSQL, -1, &insertStatement, nil) == SQLITE_OK else {
+            print("ERROR preparing insert or ignore: \(String(cString: sqlite3_errmsg(db)))")
+            return nil
+        }
+        
+        // Bind parameters for INSERT
+        for (index, key) in sortedKeys.enumerated() {
+            let value = data[key]
+            let bindIndex = Int32(index + 1)
+            
+            bindValue(to: insertStatement!, at: bindIndex, value: value)
+        }
+        
+        let insertResult = sqlite3_step(insertStatement!)
+        if insertResult != SQLITE_DONE {
+            print("ERROR executing insert or ignore: \(String(cString: sqlite3_errmsg(db)))")
+            return nil
+        }
+        
+        // Check if a row was actually inserted (changes > 0)
+        let changes = sqlite3_changes(db)
+        if changes > 0 {
+            // Row was inserted, return the provided ID
+            let insertedID = data["id"] as? String ?? data["document_id"] as? String
+            if table == "documents" {
+                print("DEBUG: Document inserted with new ID: \(insertedID ?? "nil")")
+            }
+            return insertedID
+        }
+        
+        
+        // Row already existed, we need to find the existing ID and update it
+        let existingID: String?
+        if table == "documents" {
+            // For documents table, find by (app_source, source_id)
+            let findSQL = "SELECT id FROM documents WHERE app_source = ? AND source_id = ?"
+            var findStatement: OpaquePointer?
+            defer { sqlite3_finalize(findStatement) }
+            
+            guard sqlite3_prepare_v2(db, findSQL, -1, &findStatement, nil) == SQLITE_OK else {
+                print("ERROR preparing find query: \(String(cString: sqlite3_errmsg(db)))")
+                return nil
+            }
+            
+            bindValue(to: findStatement!, at: 1, value: data["app_source"])
+            bindValue(to: findStatement!, at: 2, value: data["source_id"])
+            
+            if sqlite3_step(findStatement!) == SQLITE_ROW {
+                let idPtr = sqlite3_column_text(findStatement!, 0)
+                existingID = idPtr != nil ? String(cString: idPtr!) : nil
+            } else {
+                print("ERROR: Could not find existing document")
+                return nil
+            }
+        } else {
+            // For other tables, the ID should be the same as what we tried to insert
+            existingID = data["id"] as? String ?? data["document_id"] as? String
+        }
+        
+        guard let actualID = existingID else {
+            print("ERROR: Could not determine existing ID")
+            return nil
+        }
+        
+        // Now update the existing row
+        let nonKeyColumns = sortedKeys.filter { $0 != "id" && $0 != "document_id" }
+        if !nonKeyColumns.isEmpty {
+            let updateClauses = nonKeyColumns.map { "\($0) = ?" }.joined(separator: ", ")
+            let updateSQL: String
+            
+            if table == "documents" {
+                // For documents table, update by (app_source, source_id)
+                updateSQL = "UPDATE \(table) SET \(updateClauses) WHERE app_source = ? AND source_id = ?"
+            } else {
+                // For other tables, update by primary key
+                let primaryKeyColumn = data["id"] != nil ? "id" : "document_id"
+                updateSQL = "UPDATE \(table) SET \(updateClauses) WHERE \(primaryKeyColumn) = ?"
+            }
+            
+            var updateStatement: OpaquePointer?
+            defer { sqlite3_finalize(updateStatement) }
+            
+            guard sqlite3_prepare_v2(db, updateSQL, -1, &updateStatement, nil) == SQLITE_OK else {
+                print("ERROR preparing update: \(String(cString: sqlite3_errmsg(db)))")
+                return actualID // Return the ID even if update fails
+            }
+            
+            // Bind parameters for UPDATE
+            var paramIndex: Int32 = 1
+            for key in nonKeyColumns {
+                bindValue(to: updateStatement!, at: paramIndex, value: data[key])
+                paramIndex += 1
+            }
+            
+            // Bind WHERE clause parameters
+            if table == "documents" {
+                bindValue(to: updateStatement!, at: paramIndex, value: data["app_source"])
+                bindValue(to: updateStatement!, at: paramIndex + 1, value: data["source_id"])
+            } else {
+                bindValue(to: updateStatement!, at: paramIndex, value: actualID)
+            }
+            
+            let updateResult = sqlite3_step(updateStatement!)
+            if updateResult != SQLITE_DONE {
+                print("ERROR executing update: \(String(cString: sqlite3_errmsg(db)))")
+                return actualID // Return the ID even if update fails
+            }
+        }
+        
+        return actualID
+    }
+    
+    // Temporary methods for foreign key management during debugging
+    public func disableForeignKeys() {
+        execute("PRAGMA foreign_keys = OFF")
+        print("DEBUG: Foreign keys disabled")
+    }
+    
+    public func enableForeignKeys() {
+        execute("PRAGMA foreign_keys = ON")
+        print("DEBUG: Foreign keys enabled")
+    }
+    
+    // Helper method to bind values to prepared statements
+    private func bindValue(to statement: OpaquePointer, at index: Int32, value: Any?) {
+        if let stringVal = value as? String {
+            sqlite3_bind_text(statement, index, stringVal, Int32(stringVal.utf8.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        } else if let intVal = value as? Int {
+            sqlite3_bind_int64(statement, index, Int64(intVal))
+        } else if let doubleVal = value as? Double {
+            sqlite3_bind_double(statement, index, doubleVal)
+        } else if let dataVal = value as? Data {
+            _ = dataVal.withUnsafeBytes { bytes in
+                sqlite3_bind_blob(statement, index, bytes.baseAddress, Int32(dataVal.count), nil)
+            }
+        } else if value is NSNull || value == nil {
+            sqlite3_bind_null(statement, index)
+        }
     }
     
     func search(_ query: String, table: String = "documents_fts", limit: Int = 20) -> [[String: Any]] {

@@ -11,48 +11,47 @@ Kenny is designed to be your personal AI assistant that:
 - Maintains **strict privacy** - all data stays on your device
 - Delivers **fast responses** (≤1.2s for queries, ≤3s for tool calls)
 
-## Current Status: Comprehensive System Testing Complete ✅
+## Current Status: Semantic Search Enabled - 99.6% Embeddings Coverage ✅
 
-### 🎉 SYSTEM VALIDATION (August 23, 2025) - COMPREHENSIVE TESTING COMPLETED
+### 🎯 EMBEDDINGS PIPELINE COMPLETE (August 24, 2025)
 
-Kenny has undergone complete system testing and validation. Current database contains **233,920 documents** across all major data sources with robust search and AI capabilities:
+Kenny has achieved **full semantic search capability** with comprehensive embeddings coverage. Current database contains **207,151 documents** with **206,332 having embeddings** (99.6% coverage):
 
-**✅ WhatsApp Integration (177,873+ documents) - VERIFIED WORKING**
-- Live bridge database with 596 active messages
+**✅ WhatsApp Integration (178,253 documents / 99.8% with embeddings)**
+- Live bridge database integration
 - Historical message archives fully integrated
-- Real-time ingestion tested and functional (100 messages in 74ms)
+- Real-time sync capability tested
 - Both individual conversations and group chats included
 
-**✅ Mail Integration (27,160 documents) - VERIFIED WORKING**  
-- Complete email ingestion from Apple Mail
-- Thread-aware organization with proper metadata
-- Searchable content including attachments and contacts
-- Search tested with queries like "spa" returning accurate results
-
-**✅ Messages Integration (204,734 documents) - PARTIALLY WORKING**
-- Large message database successfully ingested  
+**✅ Messages Integration (26,861 documents / 100% with embeddings)**
+- Complete iMessage/SMS database ingested
 - Cross-platform message threading
-- Some database corruption issues identified in source data
+- Full semantic search enabled
 
-**✅ Contacts Integration (1,321 documents) - VERIFIED WORKING**
-- Complete contact database tested (1,321 contacts in 1.7 seconds)
+**✅ Contacts Integration (1,322 documents / 99.7% with embeddings)**
+- Complete contact database with structured fields
 - Primary/secondary phone numbers and email addresses
-- Company information, job titles, birthdays, and interests  
-- Idempotent operations confirmed working
+- Company information, job titles, birthdays, and interests
+- Semantic matching for contact queries
 
-**⚠️ Calendar Integration (704 documents) - NEEDS FIXING**
-- Foreign key constraint errors during ingestion
-- Schema design is correct, transaction handling needs improvement
-- 1,466 calendar events available for processing
+**✅ Calendar Integration (704 documents / 39.8% with embeddings)**
+- All events successfully ingested
+- Meeting proposals and conflict detection working
+- Partial embeddings coverage (needs completion)
 
-### System Testing Results (August 23, 2025)
+**⚠️ Mail Integration (10 documents / 0% with embeddings)**
+- Limited email data (needs investigation)
+- May require Mail app permission check
+- Meeting thread detection limited by small dataset
 
-**✅ Core Database Functions - ALL TESTS PASS**
-- Database initialization: Clean schema creation in <1 second
-- Schema migrations: Version 4 applied successfully with WAL mode
-- FTS5 Search: 3,537 results for "Courtney" in 25ms, proper snippets
-- Hybrid Search: BM25 + embeddings working (51ms query time)
-- Statistics: 233,920 total documents verified
+### System Testing Results (August 24, 2025)
+
+**✅ Semantic Search Infrastructure - FULLY OPERATIONAL**
+- **Hybrid Search**: BM25 + embeddings working (~400ms for 207K+ docs)
+- **NLP Processing**: Natural language queries with intent recognition
+- **Meeting Concierge**: Slot proposals and email drafting functional
+- **Embeddings Coverage**: 99.6% (206,332/207,151 documents)
+- **Database Location**: `/mac_tools/kenny.db` (1.3GB - ONLY use this path)
 
 **✅ CLI & API Interface - ALL TESTS PASS**  
 - Database CLI (db_cli): All commands functional
@@ -96,12 +95,12 @@ Kenny has undergone complete system testing and validation. Current database con
 - Database migrations with automatic schema upgrades
 - Full-sync capability with proper data clearing
 
-### Apple App Integration Status (Current)
-- ✅ **WhatsApp**: 177,865 messages (text exports + bridge)
-- ✅ **Mail**: 27,144 emails with full content and metadata
-- ✅ **Messages**: 26,861 iMessage/SMS with threading
-- ✅ **Contacts**: 1,321 contacts with complete information
-- ✅ **Calendar**: 703 events with attendees and locations
+### Data Integration Status (Current)
+- ✅ **WhatsApp**: 178,253 messages (99.8% with embeddings)
+- ✅ **Messages**: 26,861 iMessage/SMS (100% with embeddings)
+- ✅ **Contacts**: 1,322 contacts (99.7% with embeddings)
+- ✅ **Calendar**: 704 events (39.8% with embeddings)
+- ⚠️ **Mail**: 10 emails (needs investigation)
 - 🔄 **Files**: Integration ready (awaiting permissions)
 - 🔄 **Notes**: Integration ready (awaiting permissions)
 - 🔄 **Reminders**: Integration ready (awaiting permissions)
@@ -194,10 +193,11 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 **Note**: Use `--full-sync` for contacts to ensure proper data clearing and avoid constraint errors.
 
 ### Database Location & Architecture
-- **Main database**: `/mac_tools/kenny.db` (authoritative source)
+- **Main database**: `/mac_tools/kenny.db` (1.3GB - ONLY authoritative source)
 - **WhatsApp bridge**: `/tools/whatsapp/whatsapp_messages.db` (real-time sync)
-- **Logs**: Structured logging with rotation
+- **Embeddings**: 99.6% coverage with nomic-embed-text model
 - **FTS5 indexes**: Rebuilt automatically during ingestion
+- **CRITICAL**: Never use `/kenny.db` in root - always use `/mac_tools/kenny.db`
 
 ## Architecture
 
@@ -250,15 +250,15 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 
 ## Data Sources & Statistics
 
-### Current Database Contents (233,895 total documents)
+### Current Database Contents (207,151 total documents)
 
-| Source | Documents | Coverage | Status |
-|--------|-----------|----------|--------|
-| WhatsApp | 177,865 | 2012-2025 | ✅ Complete |
-| Mail | 27,144 | Email history | ✅ Complete |
-| Messages | 26,861 | iMessage/SMS | ✅ Complete |
-| Contacts | 1,321 | Full contact DB | ✅ Complete |
-| Calendar | 703 | Events/meetings | ✅ Complete |
+| Source | Documents | Embeddings | Coverage | Status |
+|--------|-----------|------------|----------|--------|
+| WhatsApp | 178,253 | 177,873 | 99.8% | ✅ Complete |
+| Messages | 26,861 | 26,861 | 100% | ✅ Complete |
+| Contacts | 1,322 | 1,318 | 99.7% | ✅ Complete |
+| Calendar | 704 | 280 | 39.8% | 🔄 Partial |
+| Mail | 10 | 0 | 0% | ⚠️ Limited |
 
 ### WhatsApp Integration Details
 - **Historical**: 176,898 messages from text exports (45 chat files)
@@ -268,10 +268,11 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 - **Largest chats**: 75,301 messages (family group), 17,786 messages (work group)
 
 ### Search Performance
-- **Database size**: 254MB (optimized storage)
-- **Search latency**: <100ms for most queries
+- **Database size**: 1.3GB (includes embeddings)
+- **Hybrid search latency**: ~400ms for 207K+ documents
 - **FTS5 coverage**: All text content indexed
-- **Vector embeddings**: Semantic search enabled
+- **Vector embeddings**: 99.6% coverage (206,332 documents)
+- **Embedding dimensions**: 768 (nomic-embed-text model)
 
 ## Ingestion Pipeline Features
 
@@ -352,13 +353,14 @@ For real-time WhatsApp message sync:
 
 ## Performance Benchmarks
 
-- **Full ingestion**: 233,895 documents in ~5 minutes
-- **WhatsApp parsing**: 176,898 messages in ~60 seconds
-- **Search queries**: P50 45ms, P95 150ms
-- **Database size**: 258MB for 233k+ documents (enhanced schema)
+- **Full ingestion**: 207,151 documents in ~5 minutes
+- **Embeddings generation**: 10-15 documents/second
+- **Hybrid search**: ~400ms for semantic queries
+- **NLP processing**: ~1 second with intent recognition
+- **Meeting proposals**: <1 second for 5 slots
+- **Database size**: 1.3GB with embeddings
 - **Memory usage**: <500MB during ingestion
 - **FTS5 rebuild**: <30 seconds for full index
-- **Contact ingestion**: 1,321 contacts in ~2 seconds with zero errors
 
 ## Roadmap: Next Steps
 

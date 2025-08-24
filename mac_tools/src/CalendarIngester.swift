@@ -175,12 +175,25 @@ public class CalendarIngester {
     }
     
     private func createEvent(_ event: EKEvent, forceDocumentId: String? = nil) throws {
-        let documentId = forceDocumentId ?? UUID().uuidString
+        print("DEBUG CalendarIngester createEvent called with event title: \(event.title ?? "Untitled")")
         let now = Int(Date().timeIntervalSince1970)
+        let sourceId = event.eventIdentifier ?? "no-id-\(UUID().uuidString)"
+        
+        // Check if document already exists and reuse its ID
+        let existingDocs = database.query(
+            "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
+            parameters: ["Calendar", sourceId]
+        )
+        
+        let documentId: String
+        if let existingDoc = existingDocs.first, let existingId = existingDoc["id"] as? String {
+            documentId = existingId
+        } else {
+            documentId = forceDocumentId ?? UUID().uuidString
+        }
         
         // Create rich searchable content
         let content = buildEventContent(event)
-        let sourceId = event.eventIdentifier ?? "no-id-\(documentId)"
         let hashString = buildEventHash(event)
         
         // Insert into documents table
@@ -203,7 +216,7 @@ public class CalendarIngester {
             throw CalendarIngestionError.documentInsertFailed("Failed to insert document for event: \(event.title ?? "Untitled")")
         }
         
-        // Insert into events table
+        // Insert into events table - the database will use the correct document ID
         let eventData = buildEventData(event, documentId: documentId)
         guard database.insertOrReplace("events", data: eventData) else {
             throw CalendarIngestionError.eventInsertFailed("Failed to insert event data for: \(event.title ?? "Untitled")")
