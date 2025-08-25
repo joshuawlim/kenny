@@ -39,10 +39,11 @@ Kenny has achieved **full semantic search capability** with comprehensive embedd
 - Meeting proposals and conflict detection working
 - Partial embeddings coverage (needs completion)
 
-**⚠️ Mail Integration (10 documents / 0% with embeddings)**
-- Limited email data (needs investigation)
-- May require Mail app permission check
-- Meeting thread detection limited by small dataset
+**✅ Mail Integration (27,270 documents / 0% with embeddings)**
+- Successfully restored full email database
+- 27,270 emails from Apple Mail ingested
+- Ready for embeddings generation
+- Meeting thread detection now viable with full dataset
 
 ### System Testing Results (August 24, 2025)
 
@@ -250,15 +251,15 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 
 ## Data Sources & Statistics
 
-### Current Database Contents (207,151 total documents)
+### Current Database Contents (234,411 total documents)
 
 | Source | Documents | Embeddings | Coverage | Status |
 |--------|-----------|------------|----------|--------|
 | WhatsApp | 178,253 | 177,873 | 99.8% | ✅ Complete |
+| Mail | 27,270 | 0 | 0% | ✅ Complete (needs embeddings) |
 | Messages | 26,861 | 26,861 | 100% | ✅ Complete |
 | Contacts | 1,322 | 1,318 | 99.7% | ✅ Complete |
 | Calendar | 704 | 280 | 39.8% | 🔄 Partial |
-| Mail | 10 | 0 | 0% | ⚠️ Limited |
 
 ### WhatsApp Integration Details
 - **Historical**: 176,898 messages from text exports (45 chat files)

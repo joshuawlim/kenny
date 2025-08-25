@@ -4,16 +4,16 @@
 
 ### Database Status
 - **Schema Version**: 4 (confirmed via stats command)
-- **Total Documents**: 207,151 successfully ingested (ALL DATA SOURCES WORKING)
-- **Database Size**: 1.3GB (includes embeddings for 206,332 documents)
-- **Embeddings Coverage**: 99.6% (206,332/207,151 documents)
+- **Total Documents**: 234,411 successfully ingested (ALL DATA SOURCES WORKING)
+- **Database Size**: 1.4GB+ (includes embeddings for existing documents)
+- **Embeddings Coverage**: 88.0% (206,332/234,411 documents) - Mail needs processing
 - **Database Location**: `/mac_tools/kenny.db` (CRITICAL: Only use this path)
 - **Active Data Sources**:
   - WhatsApp: 178,253 documents (99.8% with embeddings ✅)
   - Messages: 26,861 documents (100% with embeddings ✅)
   - Contacts: 1,322 documents (99.7% with embeddings ✅)
   - Calendar: 704 documents (39.8% with embeddings 🔄)
-  - Mail: 10 documents (0% with embeddings ⚠️ - limited data)
+  - Mail: 27,270 documents (0% with embeddings 🔄 - ready for processing)
   - Files: 0 documents (Not tested - awaiting permissions)
 
 ### Working Functionality
@@ -175,10 +175,10 @@ Sources/mac_tools/
 
 ## Handoff Recommendations for Next Session
 
-1. **PRIORITY 1: Investigate Mail Ingestion** 
-   - Only 10 emails in database (should be more)
-   - Check Mail app permissions and access
-   - May need to debug MailIngester.swift
+1. **PRIORITY 1: Generate Mail Embeddings** 
+   - 27,270 emails now ingested (RESTORED from 10)
+   - Need embeddings generation for semantic search
+   - Meeting Concierge can now analyze email threads with full dataset
 
 2. **PRIORITY 2: Complete Calendar Embeddings**
    - Only 39.8% of calendar events have embeddings
