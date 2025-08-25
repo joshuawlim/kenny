@@ -11,11 +11,11 @@ Kenny is designed to be your personal AI assistant that:
 - Maintains **strict privacy** - all data stays on your device
 - Delivers **fast responses** (≤1.2s for queries, ≤3s for tool calls)
 
-## Current Status: Semantic Search Enabled - 99.6% Embeddings Coverage ✅
+## Current Status: Full Data Coverage - Mail Ingestion Restored ✅
 
-### 🎯 EMBEDDINGS PIPELINE COMPLETE (August 24, 2025)
+### 🎯 MAIL RESTORATION COMPLETE (August 25, 2025)
 
-Kenny has achieved **full semantic search capability** with comprehensive embeddings coverage. Current database contains **207,151 documents** with **206,332 having embeddings** (99.6% coverage):
+Kenny has achieved **full semantic search capability** with comprehensive data coverage. Current database contains **234,411 documents** with **206,332 having embeddings** (88.0% coverage - Mail restoration complete, embeddings in progress):
 
 **✅ WhatsApp Integration (178,253 documents / 99.8% with embeddings)**
 - Live bridge database integration
@@ -39,20 +39,22 @@ Kenny has achieved **full semantic search capability** with comprehensive embedd
 - Meeting proposals and conflict detection working
 - Partial embeddings coverage (needs completion)
 
-**✅ Mail Integration (27,270 documents / 0% with embeddings)**
-- Successfully restored full email database
-- 27,270 emails from Apple Mail ingested
-- Ready for embeddings generation
-- Meeting thread detection now viable with full dataset
+**✅ Mail Integration (27,270 documents / 0% with embeddings) - RESTORED**
+- **BREAKTHROUGH**: Fixed drop from 27k to 10 emails
+- Direct Python ingester bypassing Swift foreign key issues
+- All 27,270 emails from Apple Mail successfully imported
+- Meeting Concierge now has full dataset for thread analysis
+- **Tool**: `/tools/ingest_mail_direct.py` for production use
 
-### System Testing Results (August 24, 2025)
+### System Testing Results (August 25, 2025)
 
 **✅ Semantic Search Infrastructure - FULLY OPERATIONAL**
-- **Hybrid Search**: BM25 + embeddings working (~400ms for 207K+ docs)
+- **Hybrid Search**: BM25 + embeddings working (~400ms across all sources)
 - **NLP Processing**: Natural language queries with intent recognition
-- **Meeting Concierge**: Slot proposals and email drafting functional
-- **Embeddings Coverage**: 99.6% (206,332/207,151 documents)
-- **Database Location**: `/mac_tools/kenny.db` (1.3GB - ONLY use this path)
+- **Meeting Concierge**: Slot proposals, email drafting, ready for thread analysis
+- **Mail Restoration**: 27,270 emails restored (from 10) with direct ingester
+- **Embeddings Coverage**: 88.0% (206,332/234,411 documents)
+- **Database Location**: `/mac_tools/kenny.db` (1.4GB+ - ONLY use this path)
 
 **✅ CLI & API Interface - ALL TESTS PASS**  
 - Database CLI (db_cli): All commands functional
@@ -98,10 +100,10 @@ Kenny has achieved **full semantic search capability** with comprehensive embedd
 
 ### Data Integration Status (Current)
 - ✅ **WhatsApp**: 178,253 messages (99.8% with embeddings)
+- ✅ **Mail**: 27,270 emails (0% with embeddings - RESTORED from 10)
 - ✅ **Messages**: 26,861 iMessage/SMS (100% with embeddings)
 - ✅ **Contacts**: 1,322 contacts (99.7% with embeddings)
 - ✅ **Calendar**: 704 events (39.8% with embeddings)
-- ⚠️ **Mail**: 10 emails (needs investigation)
 - 🔄 **Files**: Integration ready (awaiting permissions)
 - 🔄 **Notes**: Integration ready (awaiting permissions)
 - 🔄 **Reminders**: Integration ready (awaiting permissions)
@@ -269,11 +271,12 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 - **Largest chats**: 75,301 messages (family group), 17,786 messages (work group)
 
 ### Search Performance
-- **Database size**: 1.3GB (includes embeddings)
-- **Hybrid search latency**: ~400ms for 207K+ documents
+- **Database size**: 1.4GB+ (includes embeddings + full email dataset)
+- **Hybrid search latency**: ~400ms for 234K+ documents
 - **FTS5 coverage**: All text content indexed
-- **Vector embeddings**: 99.6% coverage (206,332 documents)
+- **Vector embeddings**: 88.0% coverage (206,332/234,411 documents)
 - **Embedding dimensions**: 768 (nomic-embed-text model)
+- **Mail restoration**: 27,270 emails added via direct ingester
 
 ## Ingestion Pipeline Features
 
@@ -354,12 +357,13 @@ For real-time WhatsApp message sync:
 
 ## Performance Benchmarks
 
-- **Full ingestion**: 207,151 documents in ~5 minutes
+- **Full ingestion**: 234,411 documents across all sources
+- **Mail restoration**: 27,270 emails in ~2 minutes (direct ingester)
 - **Embeddings generation**: 10-15 documents/second
 - **Hybrid search**: ~400ms for semantic queries
 - **NLP processing**: ~1 second with intent recognition
 - **Meeting proposals**: <1 second for 5 slots
-- **Database size**: 1.3GB with embeddings
+- **Database size**: 1.4GB+ with embeddings + full email dataset
 - **Memory usage**: <500MB during ingestion
 - **FTS5 rebuild**: <30 seconds for full index
 
