@@ -1112,12 +1112,16 @@ extension Database {
     
     /// Search for similar documents using cosine similarity with embeddings
     public func searchEmbeddings(queryVector: [Float], limit: Int = 20) -> [(String, Float, String)] {
+        // Filter by embedding dimension to match the query vector
+        // 768 dimensions = 768 * 4 bytes = 3072 bytes
+        let expectedByteLength = queryVector.count * 4
         let sql = """
             SELECT d.id, d.title, d.content, e.vector, c.text as chunk_text
             FROM documents d
             JOIN chunks c ON d.id = c.document_id
             JOIN embeddings e ON c.id = e.chunk_id
-            WHERE e.vector IS NOT NULL
+            WHERE e.vector IS NOT NULL 
+                AND LENGTH(e.vector) = \(expectedByteLength)
             ORDER BY d.created_at DESC
             LIMIT 1000
         """
@@ -1146,7 +1150,9 @@ extension Database {
                     let data = Data(bytes: blobPtr, count: Int(blobBytes))
                     if let vector = deserializeFloatArray(from: data) {
                         let similarity = cosineSimilarity(queryVector, vector)
-                        if similarity > 0.1 { // Threshold for relevance
+                        
+                        // Use a reasonable threshold for relevance
+                        if similarity > 0.1 {
                             let snippet = String(chunkText.prefix(200))
                             results.append((id, similarity, snippet))
                         }
