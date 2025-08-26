@@ -3,11 +3,18 @@
 ## Current System State - ENTERPRISE-READY AI ASSISTANT ✅
 
 ### Database Status
+
+⚠️ **CRITICAL DATABASE LOCATION WARNING** ⚠️
+- **THE ONLY VALID DATABASE**: `mac_tools/kenny.db` (1.4GB)
+- **DO NOT CREATE**: Any kenny.db files in project root or elsewhere
+- **ENFORCE DATABASE_POLICY.md**: All tools MUST use `mac_tools/kenny.db`
+- **IF YOU SEE**: Multiple kenny.db files, DELETE all except `mac_tools/kenny.db`
+
+**Current Status**:
 - **Schema Version**: 4 (confirmed and stable)
 - **Total Documents**: 234,411+ successfully ingested (ALL DATA SOURCES OPERATIONAL)
 - **Database Size**: 1.4GB+ (includes complete embeddings coverage)
 - **Embeddings Coverage**: 100% (233,983/233,983 documents) - COMPLETE ✅
-- **Database Location**: `/mac_tools/kenny.db` (CRITICAL: Only use this path)
 - **Active Data Sources**:
   - WhatsApp: 178,253 documents (100% with embeddings ✅)
   - Messages: 205,114+ documents (100% with embeddings ✅) - INCREMENTAL UPDATES WORKING

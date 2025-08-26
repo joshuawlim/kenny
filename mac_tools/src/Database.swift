@@ -1112,8 +1112,9 @@ extension Database {
     
     /// Search for similar documents using cosine similarity with embeddings
     public func searchEmbeddings(queryVector: [Float], limit: Int = 20) -> [(String, Float, String)] {
-        // Filter by embedding dimension to match the query vector
+        // Support both 768 and 1536 dimensional embeddings
         // 768 dimensions = 768 * 4 bytes = 3072 bytes
+        // 1536 dimensions = 1536 * 4 bytes = 6144 bytes
         let expectedByteLength = queryVector.count * 4
         let sql = """
             SELECT d.id, d.title, d.content, e.vector, c.text as chunk_text
@@ -1121,7 +1122,7 @@ extension Database {
             JOIN chunks c ON d.id = c.document_id
             JOIN embeddings e ON c.id = e.chunk_id
             WHERE e.vector IS NOT NULL 
-                AND LENGTH(e.vector) = \(expectedByteLength)
+                AND (LENGTH(e.vector) = \(expectedByteLength) OR LENGTH(e.vector) = 6144)
             ORDER BY d.created_at DESC
             LIMIT 1000
         """
@@ -1149,7 +1150,19 @@ extension Database {
                 if let blobPtr = sqlite3_column_blob(stmt, 3), blobBytes > 0 {
                     let data = Data(bytes: blobPtr, count: Int(blobBytes))
                     if let vector = deserializeFloatArray(from: data) {
-                        let similarity = cosineSimilarity(queryVector, vector)
+                        // Handle dimension mismatch by truncating larger vectors
+                        let adjustedVector: [Float]
+                        if vector.count == queryVector.count {
+                            adjustedVector = vector
+                        } else if vector.count > queryVector.count {
+                            // Truncate larger vector to match query dimensions
+                            adjustedVector = Array(vector.prefix(queryVector.count))
+                        } else {
+                            // Skip vectors that are smaller than query
+                            continue
+                        }
+                        
+                        let similarity = cosineSimilarity(queryVector, adjustedVector)
                         
                         // Use a reasonable threshold for relevance
                         if similarity > 0.1 {

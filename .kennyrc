@@ -1,0 +1,49 @@
+# Kenny Repository Configuration
+# Enforces proper paths and prevents AI agent mistakes
+
+# CRITICAL: Database location enforcement
+DATABASE_PATH="mac_tools/kenny.db"
+BACKUP_DIR="backups/"
+
+# Forbidden locations (will trigger errors)
+FORBIDDEN_DB_PATHS=[
+    "kenny.db",
+    "*.db",
+    "mac_tools/mac_tools/kenny.db",
+    "*/kenny.db"
+]
+
+# Required directories
+REQUIRED_DIRS=[
+    "mac_tools",
+    "tools", 
+    "backups",
+    "logs"
+]
+
+# AI Agent Guidelines
+AI_RULES=[
+    "NEVER create kenny.db in project root",
+    "ALWAYS use mac_tools/kenny.db path",
+    "NEVER create nested mac_tools directories",
+    "ALWAYS validate repository structure before committing",
+    "USE tools/db_restore.py for database operations"
+]
+
+# Validation settings
+VALIDATE_ON_COMMIT=true
+VALIDATE_ON_PUSH=true
+AUTO_FIX_MINOR_ISSUES=false
+STRICT_MODE=true
+
+# Logging
+LOG_VALIDATION_RESULTS=true
+LOG_DIR="logs/"
+
+# Tool paths
+VALIDATOR_SCRIPT="scripts/validate_repo.py"
+BACKUP_TOOL="tools/db_backup.py" 
+RESTORE_TOOL="tools/db_restore.py"
+
+# Version
+CONFIG_VERSION="1.0.0"

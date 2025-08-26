@@ -200,11 +200,17 @@ cd mac_tools && swift run orchestrator_cli ingest --sources "Contacts" --full-sy
 **Note**: Use `--full-sync` for contacts to ensure proper data clearing and avoid constraint errors.
 
 ### Database Location & Architecture
-- **Main database**: `/mac_tools/kenny.db` (1.3GB - ONLY authoritative source)
+
+⚠️ **CRITICAL DATABASE POLICY** ⚠️
+- **THE ONLY DATABASE**: `mac_tools/kenny.db` (1.4GB - ABSOLUTE SINGLE SOURCE OF TRUTH)
+- **DO NOT CREATE**: Any kenny.db files in project root or anywhere else
+- **ALL TOOLS MUST USE**: `mac_tools/kenny.db` - no exceptions
+- **See DATABASE_POLICY.md** for strict enforcement rules
+
+**Other Databases**:
 - **WhatsApp bridge**: `/tools/whatsapp/whatsapp_messages.db` (real-time sync)
-- **Embeddings**: 99.6% coverage with nomic-embed-text model
+- **Embeddings**: 100% coverage with mixed dimensions (768/1536)
 - **FTS5 indexes**: Rebuilt automatically during ingestion
-- **CRITICAL**: Never use `/kenny.db` in root - always use `/mac_tools/kenny.db`
 
 ## Architecture
 
