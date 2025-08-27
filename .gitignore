@@ -51,8 +51,8 @@ transformed/
 kenny_test.db
 kenny_enhanced.db
 kenny_data.db
-# But allow the correct one and backups:
-!mac_tools/kenny.db
+# Block the main database but allow backups:
+mac_tools/kenny.db
 mac_tools/kenny_backup_*.db
 
 # Application Support (contains user data)
