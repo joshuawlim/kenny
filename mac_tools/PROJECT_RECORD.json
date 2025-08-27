@@ -1,0 +1,286 @@
+{
+  "projectMeta": {
+    "name": "Kenny AI Assistant",
+    "version": "2.0.0",
+    "lastUpdated": "2025-08-27T00:00:00Z",
+    "status": "active"
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "type": "functional",
+      "description": "Enterprise-grade configuration management system",
+      "priority": "critical",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Environment-aware configuration (development/testing/staging/production)",
+        "No hardcoded values in codebase",
+        "Environment variable overrides for all settings",
+        "Comprehensive configuration validation"
+      ],
+      "addedDate": "2025-08-26T00:00:00Z",
+      "completedDate": "2025-08-27T00:00:00Z"
+    },
+    {
+      "id": "REQ-002",
+      "type": "functional", 
+      "description": "Semantic search with hybrid BM25 + vector embeddings",
+      "priority": "critical",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Local sentence transformer embeddings",
+        "Hybrid search combining keyword and semantic similarity",
+        "Sub-500ms query response times",
+        "Cross-source correlation capabilities"
+      ],
+      "addedDate": "2025-08-20T00:00:00Z",
+      "completedDate": "2025-08-25T00:00:00Z"
+    },
+    {
+      "id": "REQ-003",
+      "type": "functional",
+      "description": "Comprehensive data ingestion from all macOS sources",
+      "priority": "high",
+      "status": "completed", 
+      "acceptanceCriteria": [
+        "Messages, Mail, Contacts, Calendar ingestion",
+        "WhatsApp message support",
+        "Real-time incremental updates",
+        "Unified database architecture"
+      ],
+      "addedDate": "2025-08-15T00:00:00Z",
+      "completedDate": "2025-08-25T00:00:00Z"
+    },
+    {
+      "id": "REQ-004",
+      "type": "functional",
+      "description": "Web-based frontend interface for Kenny",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Assistant-first chat interface",
+        "Global search across all data sources",
+        "Thread/conversation browsing",
+        "Mobile-optimized design",
+        "SSE streaming for real-time responses"
+      ],
+      "addedDate": "2025-08-27T00:00:00Z"
+    },
+    {
+      "id": "REQ-005",
+      "type": "functional",
+      "description": "Apple MCP integration for native app control",
+      "priority": "medium",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Phase 1: Read-only access (Contacts, Calendar, Mail search)",
+        "Phase 2: Guarded write operations with confirmations",
+        "Phase 3: Full actuation with safety controls",
+        "Audit logging for all MCP operations",
+        "Integration with existing Kenny architecture"
+      ],
+      "addedDate": "2025-08-27T00:00:00Z"
+    },
+    {
+      "id": "REQ-006",
+      "type": "non-functional",
+      "description": "Production-ready performance and reliability",
+      "priority": "critical",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Sub-100ms query performance for typical searches",
+        "Comprehensive error handling and fault tolerance", 
+        "Performance monitoring and metrics",
+        "Database connection pooling and optimization"
+      ],
+      "addedDate": "2025-08-20T00:00:00Z",
+      "completedDate": "2025-08-26T00:00:00Z"
+    }
+  ],
+  "roadmap": {
+    "phases": [
+      {
+        "name": "Phase 1: Backend Intelligence (Week 8)",
+        "targetDate": "2025-08-25",
+        "status": "completed",
+        "milestones": [
+          "Semantic search implementation",
+          "Natural language query processing", 
+          "Action capabilities (email drafts, calendar)",
+          "CLI intelligence validation"
+        ],
+        "dependencies": []
+      },
+      {
+        "name": "Phase 2: Data Completeness (Week 9)",
+        "targetDate": "2025-08-26",
+        "status": "completed",
+        "milestones": [
+          "Complete data source ingestion",
+          "Real-time incremental updates",
+          "Data quality validation",
+          "Performance optimization"
+        ],
+        "dependencies": ["Phase 1"]
+      },
+      {
+        "name": "Phase 3: Configuration Architecture (Week 10)",
+        "targetDate": "2025-08-27",
+        "status": "completed", 
+        "milestones": [
+          "Enterprise-grade configuration management",
+          "Environment-aware settings",
+          "Production deployment readiness",
+          "Comprehensive testing across environments"
+        ],
+        "dependencies": ["Phase 2"]
+      },
+      {
+        "name": "Phase 4: Frontend Development (Week 11-12)",
+        "targetDate": "2025-09-10",
+        "status": "pending",
+        "milestones": [
+          "Backend API development for frontend",
+          "Next.js frontend implementation",
+          "Assistant chat interface with SSE streaming",
+          "Search and thread browsing interfaces",
+          "Mobile-optimized responsive design"
+        ],
+        "dependencies": ["Phase 3"]
+      },
+      {
+        "name": "Phase 5: Apple MCP Integration (Week 13-15)",
+        "targetDate": "2025-09-24",
+        "status": "pending",
+        "milestones": [
+          "Phase 1: Read-only MCP integration",
+          "Phase 2: Guarded write operations",
+          "Phase 3: Full actuation capabilities",
+          "Security and audit logging",
+          "Integration testing"
+        ],
+        "dependencies": ["Phase 4"]
+      }
+    ]
+  },
+  "completedWork": [
+    {
+      "id": "WORK-001",
+      "description": "Implemented comprehensive ConfigurationManager with environment-aware settings",
+      "completedDate": "2025-08-27T00:00:00Z",
+      "relatedRequirement": "REQ-001",
+      "notes": "Eliminated all hardcoded values, added support for development/testing/staging/production environments with appropriate defaults and overrides"
+    },
+    {
+      "id": "WORK-002",
+      "description": "Completed advanced hybrid search architecture with semantic embeddings",
+      "completedDate": "2025-08-25T00:00:00Z",
+      "relatedRequirement": "REQ-002", 
+      "notes": "Implemented local sentence transformers, BM25 + vector similarity hybrid search, achieved sub-500ms query performance"
+    },
+    {
+      "id": "WORK-003",
+      "description": "Unified ingestion architecture resolving database locking issues",
+      "completedDate": "2025-08-24T00:00:00Z",
+      "relatedRequirement": "REQ-003",
+      "notes": "Resolved critical database locking problems, implemented robust connection management and concurrent access patterns"
+    },
+    {
+      "id": "WORK-004",
+      "description": "Production-ready CLI with comprehensive error handling",
+      "completedDate": "2025-08-26T00:00:00Z", 
+      "relatedRequirement": "REQ-006",
+      "notes": "Implemented fault tolerance, performance monitoring, advanced CLI features for power users"
+    },
+    {
+      "id": "WORK-005",
+      "description": "AI agent repository protection system",
+      "completedDate": "2025-08-23T00:00:00Z",
+      "relatedRequirement": "REQ-006",
+      "notes": "Comprehensive security measures to protect against unauthorized access and maintain data integrity"
+    }
+  ],
+  "openTasks": [
+    {
+      "id": "TASK-001",
+      "description": "Implement backend API server for frontend integration",
+      "priority": "high",
+      "estimatedEffort": "5-7 days",
+      "blockers": [],
+      "createdDate": "2025-08-27T00:00:00Z",
+      "assignedPhase": "Phase 4"
+    },
+    {
+      "id": "TASK-002", 
+      "description": "Build Next.js frontend with assistant-first interface",
+      "priority": "high",
+      "estimatedEffort": "7-10 days",
+      "blockers": ["TASK-001"],
+      "createdDate": "2025-08-27T00:00:00Z",
+      "assignedPhase": "Phase 4"
+    },
+    {
+      "id": "TASK-003",
+      "description": "Research and prototype Apple MCP integration architecture",
+      "priority": "medium",
+      "estimatedEffort": "3-5 days",
+      "blockers": [],
+      "createdDate": "2025-08-27T00:00:00Z",
+      "assignedPhase": "Phase 5"
+    },
+    {
+      "id": "TASK-004",
+      "description": "Implement Phase 1 Apple MCP (read-only operations)",
+      "priority": "medium", 
+      "estimatedEffort": "5-7 days",
+      "blockers": ["TASK-003"],
+      "createdDate": "2025-08-27T00:00:00Z",
+      "assignedPhase": "Phase 5"
+    },
+    {
+      "id": "TASK-005",
+      "description": "Design and implement SSE streaming for real-time chat",
+      "priority": "high",
+      "estimatedEffort": "3-4 days",
+      "blockers": ["TASK-001"],
+      "createdDate": "2025-08-27T00:00:00Z",
+      "assignedPhase": "Phase 4"
+    }
+  ],
+  "knownIssues": [
+    {
+      "id": "ISSUE-001",
+      "description": "No user interface currently available - CLI-only access",
+      "severity": "high",
+      "reportedDate": "2025-08-27T00:00:00Z", 
+      "status": "open",
+      "workaround": "Use CLI commands for all operations until frontend is implemented"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "decision": "Backend-first development approach with CLI validation before UI",
+      "rationale": "Validates core intelligence capabilities and ensures solid foundation before investing in frontend development",
+      "alternatives": ["Frontend-first approach", "Parallel frontend/backend development"],
+      "date": "2025-08-15T00:00:00Z",
+      "impact": "Delayed UI delivery but ensured robust backend architecture and proven intelligence capabilities"
+    },
+    {
+      "id": "DEC-002",
+      "decision": "Comprehensive configuration management overhaul",
+      "rationale": "Eliminate technical debt from hardcoded values and prepare for production deployment across multiple environments",
+      "alternatives": ["Gradual configuration migration", "Environment-specific config files"],
+      "date": "2025-08-26T00:00:00Z", 
+      "impact": "Significant architecture improvement enabling proper environment management and deployment flexibility"
+    },
+    {
+      "id": "DEC-003",
+      "decision": "Apple MCP integration with phased rollout approach",
+      "rationale": "Balances rapid capability expansion with security and stability concerns through gradual permission escalation",
+      "alternatives": ["Full MCP integration immediately", "Custom Swift implementations only"],
+      "date": "2025-08-27T00:00:00Z",
+      "impact": "Enables faster feature development while maintaining security and allowing controlled risk management"
+    }
+  ]
+}
