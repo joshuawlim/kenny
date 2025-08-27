@@ -130,19 +130,26 @@ struct IngestFull: AsyncParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            // Run actual ingest with proper async/await
+            // Run actual ingest with unified coordinator to prevent database locking
             do {
-                try await ingestManager.runFullIngest()
+                let coordinator = IngestCoordinator(enableBackup: true)
+                try coordinator.initialize(dbPath: dbPath)
                 
-                let totalDocs = try db.getDocumentCount()
+                let summary = try await coordinator.runComprehensiveIngest()
                 let duration = Date().timeIntervalSince(startTime)
                 
+                // Calculate totals from source results
+                let totalProcessed = summary.sourceResults.values.reduce(0) { $0 + $1.stats.itemsProcessed }
+                let totalCreated = summary.sourceResults.values.reduce(0) { $0 + $1.stats.itemsCreated }
+                let totalErrors = summary.sourceResults.values.reduce(0) { $0 + $1.stats.errors }
+                let successfulSources = summary.sourceResults.values.filter { $0.status == .success }.count
+                
                 let result = Result(
-                    status: "completed",
+                    status: successfulSources == summary.sourceResults.count ? "completed" : "completed_with_errors",
                     duration_seconds: duration,
-                    items_processed: totalDocs,
-                    items_created: totalDocs,
-                    errors: 0
+                    items_processed: totalProcessed,
+                    items_created: totalCreated,
+                    errors: totalErrors
                 )
                 _ = printJSON(result)
             } catch {
@@ -633,24 +640,25 @@ struct IngestMessagesOnly: AsyncParsableCommand {
             )
             _ = printJSON(result)
         } else {
-            // Run Messages ingestion ONLY
+            // Run Messages ingestion using unified coordinator (single source)
             do {
-                print("Running Messages-only ingestion...")
+                print("Running Messages-only ingestion via IngestCoordinator...")
                 print("Parameters: batch_size=\(batchSize), max_messages=\(maxMessages?.description ?? "unlimited")")
-                let messageStats = try await ingestManager.ingestMessages(
-                    isFullSync: true,
-                    batchSize: batchSize,
-                    maxMessages: maxMessages
-                )
+                
+                let coordinator = IngestCoordinator(enableBackup: false) // Disable backup for individual sources
+                try coordinator.initialize(dbPath: dbPath)
+                
+                let summary = try await coordinator.runSourceIngestion(["Messages"])
                 let duration = Date().timeIntervalSince(startTime)
                 
+                let messageResult = summary.sourceResults["Messages"]
                 let result = Result(
-                    status: "completed",
+                    status: messageResult?.status == .success ? "completed" : "failed",
                     source: "messages",
                     duration_seconds: duration,
-                    items_processed: messageStats.itemsProcessed,
-                    items_created: messageStats.itemsCreated,
-                    errors: messageStats.errors
+                    items_processed: messageResult?.stats.itemsProcessed ?? 0,
+                    items_created: messageResult?.stats.itemsCreated ?? 0,
+                    errors: messageResult?.stats.errors ?? 1
                 )
                 _ = printJSON(result)
             } catch {
@@ -664,7 +672,7 @@ struct IngestMessagesOnly: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!")
             }
         }
     }

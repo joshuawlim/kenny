@@ -4,6 +4,10 @@ import SQLite3
 public class Database {
     internal var db: OpaquePointer?
     private let dbPath: String
+    private static let connectionQueue = DispatchQueue(label: "kenny.database.connection", qos: .userInitiated)
+    private static var activeConnections: Int = 0
+    private static let maxConnections: Int = 1  // Force single connection for now
+    private let connectionSemaphore = DispatchSemaphore(value: 1)
     
     public init(path: String? = nil) {
         if let customPath = path {
@@ -49,6 +53,13 @@ public class Database {
     
     @discardableResult
     func execute(_ sql: String) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return executeInternal(sql)
+    }
+    
+    @discardableResult
+    private func executeInternal(_ sql: String) -> Bool {
         // Handle multi-statement SQL by parsing correctly with comment and multi-line support
         let statements = parseMultipleStatements(sql)
         
@@ -79,6 +90,13 @@ public class Database {
     
     @discardableResult
     func execute(_ sql: String, parameters: [Any]) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return executeInternal(sql, parameters: parameters)
+    }
+    
+    @discardableResult
+    private func executeInternal(_ sql: String, parameters: [Any]) -> Bool {
         var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt) }
         
@@ -188,6 +206,12 @@ public class Database {
     }
     
     public func query(_ sql: String, parameters: [Any] = []) -> [[String: Any]] {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return [] }
+        defer { connectionSemaphore.signal() }
+        return queryInternal(sql, parameters: parameters)
+    }
+    
+    private func queryInternal(_ sql: String, parameters: [Any] = []) -> [[String: Any]] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         
@@ -255,6 +279,12 @@ public class Database {
     }
     
     public func insert(_ table: String, data: [String: Any]) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return insertInternal(table, data: data)
+    }
+    
+    private func insertInternal(_ table: String, data: [String: Any]) -> Bool {
         let sortedKeys = data.keys.sorted()
         let columns = sortedKeys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
@@ -298,12 +328,18 @@ public class Database {
     }
     
     public func insertOrReplace(_ table: String, data: [String: Any]) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return insertOrReplaceInternal(table, data: data)
+    }
+    
+    private func insertOrReplaceInternal(_ table: String, data: [String: Any]) -> Bool {
         // For documents table with duplicate (app_source, source_id), reuse existing ID
         if table == "documents",
            let appSource = data["app_source"] as? String,
            let sourceId = data["source_id"] as? String {
             
-            let existingDocs = query(
+            let existingDocs = queryInternal(
                 "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
                 parameters: [appSource, sourceId]
             )
@@ -312,17 +348,23 @@ public class Database {
                 // Update existing document with existing ID
                 var updatedData = data
                 updatedData["id"] = existingId
-                return insertOrIgnoreThenUpdate(table, data: updatedData)
+                return insertOrIgnoreThenUpdateInternal(table, data: updatedData)
             }
         }
         
         // For all other cases, use standard insert or replace logic
-        return insertOrIgnoreThenUpdate(table, data: data)
+        return insertOrIgnoreThenUpdateInternal(table, data: data)
     }
     
     // New method that returns the actual ID that was inserted/updated
     public func insertOrReplaceAndGetID(_ table: String, data: [String: Any]) -> String? {
-        let result = insertOrIgnoreThenUpdateWithID(table, data: data)
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return nil }
+        defer { connectionSemaphore.signal() }
+        return insertOrReplaceAndGetIDInternal(table, data: data)
+    }
+    
+    private func insertOrReplaceAndGetIDInternal(_ table: String, data: [String: Any]) -> String? {
+        let result = insertOrIgnoreThenUpdateWithIDInternal(table, data: data)
         if table == "documents" {
             print("DEBUG: insertOrReplaceAndGetID returning: \(result ?? "nil")")
         }
@@ -331,6 +373,12 @@ public class Database {
     
     // New method that handles upserts properly for foreign key relationships
     public func insertOrUpdate(_ table: String, data: [String: Any]) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return insertOrUpdateInternal(table, data: data)
+    }
+    
+    private func insertOrUpdateInternal(_ table: String, data: [String: Any]) -> Bool {
         let sortedKeys = data.keys.sorted()
         let columns = sortedKeys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
@@ -399,18 +447,24 @@ public class Database {
     
     // Safer method that uses INSERT OR IGNORE + UPDATE to avoid foreign key issues
     public func insertOrIgnoreThenUpdate(_ table: String, data: [String: Any]) -> Bool {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return false }
+        defer { connectionSemaphore.signal() }
+        return insertOrIgnoreThenUpdateInternal(table, data: data)
+    }
+    
+    private func insertOrIgnoreThenUpdateInternal(_ table: String, data: [String: Any]) -> Bool {
         
         // Special handling for events table to ensure document_id exists
         if table == "events", let documentId = data["document_id"] as? String {
             // Check if the document actually exists
-            let docExists = query("SELECT id FROM documents WHERE id = ?", parameters: [documentId])
+            let docExists = queryInternal("SELECT id FROM documents WHERE id = ?", parameters: [documentId])
             if docExists.isEmpty {
                 print("ERROR: Document ID \(documentId) does not exist for events insert")
                 print("ERROR: This suggests the CalendarIngester is using a different ID than what was inserted")
                 
                 // HACK: Try to find the most recently inserted Calendar document
                 // This is a reasonable approximation since Calendar ingestion processes events sequentially
-                let recentDocs = query(
+                let recentDocs = queryInternal(
                     "SELECT id FROM documents WHERE app_source = 'Calendar' ORDER BY last_seen_at DESC LIMIT 1",
                     parameters: []
                 )
@@ -419,7 +473,7 @@ public class Database {
                     print("HACK: Using most recent Calendar document ID: \(recentId)")
                     var fixedData = data
                     fixedData["document_id"] = recentId
-                    return insertOrIgnoreThenUpdate(table, data: fixedData)
+                    return insertOrIgnoreThenUpdateInternal(table, data: fixedData)
                 }
                 
                 return false
@@ -525,6 +579,12 @@ public class Database {
     
     // Enhanced method that returns the actual ID that was inserted/updated
     public func insertOrIgnoreThenUpdateWithID(_ table: String, data: [String: Any]) -> String? {
+        guard connectionSemaphore.wait(timeout: .now() + 30) == .success else { return nil }
+        defer { connectionSemaphore.signal() }
+        return insertOrIgnoreThenUpdateWithIDInternal(table, data: data)
+    }
+    
+    private func insertOrIgnoreThenUpdateWithIDInternal(_ table: String, data: [String: Any]) -> String? {
         let sortedKeys = data.keys.sorted()
         let columns = sortedKeys.joined(separator: ", ")
         let placeholders = Array(repeating: "?", count: data.count).joined(separator: ", ")
@@ -534,7 +594,7 @@ public class Database {
            let appSource = data["app_source"] as? String,
            let sourceId = data["source_id"] as? String {
             
-            let existingDocs = query(
+            let existingDocs = queryInternal(
                 "SELECT id FROM documents WHERE app_source = ? AND source_id = ?",
                 parameters: [appSource, sourceId]
             )
@@ -545,7 +605,7 @@ public class Database {
                 updatedData["id"] = existingId
                 
                 // Update the document
-                let updateSuccess = insertOrIgnoreThenUpdate(table, data: updatedData)
+                let updateSuccess = insertOrIgnoreThenUpdateInternal(table, data: updatedData)
                 return updateSuccess ? existingId : nil
             }
         }

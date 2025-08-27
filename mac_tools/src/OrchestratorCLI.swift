@@ -71,7 +71,7 @@ struct SearchCommand: AsyncParsableCommand {
 struct IngestCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ingest",
-        abstract: "Ingest data from Apple apps"
+        abstract: "Ingest data from Apple apps using unified coordinator"
     )
     
     @Option(help: "Data sources to ingest (comma-separated)")
@@ -80,29 +80,95 @@ struct IngestCommand: AsyncParsableCommand {
     @Flag(name: .customLong("full-sync"), help: "Perform full sync (otherwise incremental)")
     var fullSync: Bool = false
     
+    @Flag(name: .customLong("enable-backup"), help: "Create database backup before ingestion")
+    var enableBackup: Bool = true
+    
+    @Option(name: .customLong("db-path"), help: "Database path")
+    var dbPath: String = "kenny.db"
+    
     func run() async throws {
-        // Use kenny.db in mac_tools directory as source of truth
-        let kennyDBPath = "kenny.db"
-        let database = Database(path: kennyDBPath)
-        let orchestrator = Orchestrator(database: database)
-        
-        let sourceFilter = sources.isEmpty ? [] : sources.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        
-        let request = UserRequest(
-            type: .dataIngest,
-            parameters: [
-                "sources": sourceFilter,
-                "full_sync": fullSync
-            ]
-        )
+        print("🚀 Kenny Unified Ingestion System")
+        print("Using centralized IngestCoordinator to prevent database locking...")
         
         do {
-            let response = try await orchestrator.processRequest(request)
+            // Initialize the unified coordinator
+            let coordinator = IngestCoordinator(enableBackup: enableBackup)
+            try coordinator.initialize(dbPath: dbPath)
+            
+            let summary: IngestSummary
+            
+            if sources.isEmpty {
+                // Run comprehensive ingestion for all sources
+                print("Running comprehensive ingestion for all sources...")
+                summary = try await coordinator.runComprehensiveIngest()
+            } else {
+                // Run ingestion for specific sources only
+                let sourceList = sources.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+                print("Running ingestion for sources: \(sourceList.joined(separator: ", "))")
+                summary = try await coordinator.runSourceIngestion(sourceList)
+            }
+            
+            // Convert to compatible response format
+            let response = convertSummaryToResponse(summary)
             printResponse(response)
+            
         } catch {
-            print("Error: \(error.localizedDescription)")
+            print("❌ Unified ingestion failed: \(error.localizedDescription)")
+            
+            // Create error response
+            let errorResponse = UserResponse(
+                success: false,
+                type: .dataIngest,
+                message: "Ingestion failed: \(error.localizedDescription)",
+                data: [:],
+                timestamp: Date()
+            )
+            printResponse(errorResponse)
             throw ExitCode.failure
         }
+    }
+    
+    /// Convert IngestSummary to UserResponse for compatibility
+    private func convertSummaryToResponse(_ summary: IngestSummary) -> UserResponse {
+        let duration = summary.endTime?.timeIntervalSince(summary.startTime ?? Date()) ?? 0
+        let successfulSources = summary.sourceResults.values.filter { $0.status == .success }.count
+        let totalSources = summary.sourceResults.count
+        
+        var responseData: [String: Any] = [
+            "duration_seconds": duration,
+            "successful_sources": successfulSources,
+            "total_sources": totalSources,
+            "source_results": summary.sourceResults.mapValues { result in
+                [
+                    "status": result.status.rawValue,
+                    "items_processed": result.stats.itemsProcessed,
+                    "items_created": result.stats.itemsCreated,
+                    "errors": result.errors.count
+                ]
+            }
+        ]
+        
+        if let backupResult = summary.backupResult {
+            responseData["backup_status"] = backupResult.status.rawValue
+            responseData["backup_path"] = summary.backupPath
+        }
+        
+        if let finalStats = summary.finalStats {
+            responseData["final_document_count"] = finalStats["total_documents"]
+        }
+        
+        let success = successfulSources == totalSources && summary.backupResult?.status != .failed
+        let message = success ? 
+            "Unified ingestion completed successfully: \(successfulSources)/\(totalSources) sources" :
+            "Ingestion completed with \(totalSources - successfulSources) failures"
+        
+        return UserResponse(
+            success: success,
+            type: .dataIngest,
+            message: message,
+            data: responseData,
+            timestamp: Date()
+        )
     }
 }
 

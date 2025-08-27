@@ -18,17 +18,20 @@ public class IngestManager {
         
         var stats = IngestStats()
         
-        // Ingest all data sources in parallel with individual error handling
-        async let mailStats = safeIngest { try await ingestMail(isFullSync: true) }
-        async let eventStats = safeIngest { try await ingestCalendar(isFullSync: true) }
-        async let reminderStats = safeIngest { try await ingestReminders(isFullSync: true) }
-        async let noteStats = safeIngest { try await ingestNotes(isFullSync: true) }
-        async let fileStats = safeIngest { try await ingestFiles(isFullSync: true) }
-        async let messageStats = safeIngest { try await ingestMessages(isFullSync: true) }
-        async let contactStats = safeIngest { try await ingestContacts(isFullSync: true) }
-        async let whatsappStats = safeIngest { try await ingestWhatsApp(isFullSync: true) }
+        // Ingest all data sources SEQUENTIALLY to prevent database locking issues
+        // (Previously parallel execution caused WAL mode conflicts)
+        print("Running sequential ingestion to prevent database locking...")
         
-        let results = await [
+        let mailStats = await safeIngest { try await ingestMail(isFullSync: true) }
+        let eventStats = await safeIngest { try await ingestCalendar(isFullSync: true) }
+        let reminderStats = await safeIngest { try await ingestReminders(isFullSync: true) }
+        let noteStats = await safeIngest { try await ingestNotes(isFullSync: true) }
+        let fileStats = await safeIngest { try await ingestFiles(isFullSync: true) }
+        let messageStats = await safeIngest { try await ingestMessages(isFullSync: true) }
+        let contactStats = await safeIngest { try await ingestContacts(isFullSync: true) }
+        let whatsappStats = await safeIngest { try await ingestWhatsApp(isFullSync: true) }
+        
+        let results = [
             mailStats, eventStats, reminderStats, 
             noteStats, fileStats, messageStats, contactStats, whatsappStats
         ]
@@ -57,17 +60,19 @@ public class IngestManager {
         // Get last ingest time for each source
         let lastIngestTimes = getLastIngestTimes()
         
-        // Run incremental updates
-        async let mailStats = ingestMail(isFullSync: false, since: lastIngestTimes["mail"])
-        async let eventStats = ingestCalendar(isFullSync: false, since: lastIngestTimes["events"])
-        async let reminderStats = ingestReminders(isFullSync: false, since: lastIngestTimes["reminders"])
-        async let noteStats = ingestNotes(isFullSync: false, since: lastIngestTimes["notes"])
-        async let fileStats = ingestFiles(isFullSync: false, since: lastIngestTimes["files"])
-        async let messageStats = ingestMessages(isFullSync: false, since: lastIngestTimes["messages"])
-        async let contactStats = ingestContacts(isFullSync: false, since: lastIngestTimes["contacts"])
-        async let whatsappStats = ingestWhatsApp(isFullSync: false, since: lastIngestTimes["whatsapp"])
+        // Run incremental updates SEQUENTIALLY to prevent database locking
+        print("Running sequential incremental updates to prevent database locking...")
         
-        let results = try await [
+        let mailStats = try await ingestMail(isFullSync: false, since: lastIngestTimes["mail"])
+        let eventStats = try await ingestCalendar(isFullSync: false, since: lastIngestTimes["events"])
+        let reminderStats = try await ingestReminders(isFullSync: false, since: lastIngestTimes["reminders"])
+        let noteStats = try await ingestNotes(isFullSync: false, since: lastIngestTimes["notes"])
+        let fileStats = try await ingestFiles(isFullSync: false, since: lastIngestTimes["files"])
+        let messageStats = try await ingestMessages(isFullSync: false, since: lastIngestTimes["messages"])
+        let contactStats = try await ingestContacts(isFullSync: false, since: lastIngestTimes["contacts"])
+        let whatsappStats = try await ingestWhatsApp(isFullSync: false, since: lastIngestTimes["whatsapp"])
+        
+        let results = [
             mailStats, eventStats, reminderStats,
             noteStats, fileStats, messageStats, contactStats, whatsappStats
         ]
