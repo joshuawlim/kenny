@@ -1,0 +1,21 @@
+# Kenny API Backend Dependencies
+# FastAPI and server components
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Data processing and validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Validation and security  
+email-validator==2.1.0
+
+# Utilities
+python-json-logger==2.0.7
+
+# Development dependencies (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+requests==2.31.0
+httpx==0.25.2
