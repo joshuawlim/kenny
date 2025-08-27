@@ -9,8 +9,11 @@ public class PerformanceMonitor {
     private let metricsQueue = DispatchQueue(label: "metrics", qos: .utility)
     private var metrics: [String: MetricSeries] = [:]
     private let startTime = Date()
+    private let configManager: ConfigurationManager
     
-    private init() {}
+    private init() {
+        self.configManager = ConfigurationManager.shared
+    }
     
     // MARK: - Metric Collection
     
@@ -59,11 +62,14 @@ public class PerformanceMonitor {
             let dataPoint = DataPoint(timestamp: Date(), value: value, tags: tags)
             self.metrics[name]?.addDataPoint(dataPoint)
             
-            // Log high-value metrics
-            if value > 5000 { // Operations > 5s
+            // Log high-value metrics using configured thresholds
+            let criticalThreshold = Double(self.configManager.performance.criticalOperationThresholdMs)
+            let slowThreshold = Double(self.configManager.performance.slowQueryThresholdMs)
+            
+            if value > criticalThreshold {
                 os_log("Slow operation: %{public}s took %.2fms", 
                        log: self.logger, type: .error, name, value)
-            } else if value > 1200 { // Operations > 1.2s
+            } else if value > slowThreshold {
                 os_log("Performance warning: %{public}s took %.2fms", 
                        log: self.logger, type: .info, name, value)
             }
@@ -139,7 +145,8 @@ public class PerformanceMonitor {
     private func generateSystemHealth() -> SystemHealth {
         // Simplified health check
         let memoryMetric = metrics["system.memory_usage_mb"]?.dataPoints.last?.value ?? 0
-        let isHealthy = memoryMetric < 512 // Less than 512MB
+        let memoryThreshold = Double(configManager.performance.memoryWarningThresholdMB)
+        let isHealthy = memoryMetric < memoryThreshold
         
         return SystemHealth(
             isHealthy: isHealthy,
@@ -185,10 +192,11 @@ public struct DataPoint {
 public class MetricSeries {
     public let name: String
     public private(set) var dataPoints: [DataPoint] = []
-    private let maxDataPoints = 10000 // Limit memory usage
+    private let maxDataPoints: Int
     
     public init(name: String) {
         self.name = name
+        self.maxDataPoints = ConfigurationManager.shared.performance.maxDataPoints
     }
     
     public func addDataPoint(_ point: DataPoint) {

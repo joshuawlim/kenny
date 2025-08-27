@@ -27,7 +27,7 @@ struct ProcessQuery: AsyncParsableCommand {
     var query: String
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(name: .customLong("max-retries"), help: "Maximum retry attempts")
     var maxRetries: Int = 3
@@ -159,7 +159,7 @@ struct TestDeterministic: AsyncParsableCommand {
     )
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     func run() async throws {
         print("🧪 Week 4 Assistant Core - Deterministic Test Suite")
@@ -204,7 +204,12 @@ struct CheckLLM: AsyncParsableCommand {
         print("Model: \(model)")
         print("---")
         
-        let llmService = LLMService(model: model)
+        let llmService = LLMService(
+            ollamaBaseURL: "http://localhost:11434",
+            model: model,
+            timeoutInterval: 30.0,
+            maxRetries: 2
+        )
         
         print("Checking Ollama availability...")
         let isAvailable = await llmService.checkAvailability()

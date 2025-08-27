@@ -10,11 +10,20 @@ public class LLMService {
     private let maxRetries: Int
     private let logger = Logger(subsystem: "Kenny.LLMService", category: "Service")
     
+    public init() {
+        let config = ConfigurationManager.shared.llm
+        self.ollamaBaseURL = config.endpoint
+        self.model = config.model
+        self.timeoutInterval = config.timeout
+        self.maxRetries = config.maxRetries
+    }
+    
+    /// Legacy initializer for custom configuration (testing/special cases)
     public init(
-        ollamaBaseURL: String = "http://localhost:11434",
-        model: String = "llama3.2:3b",
-        timeoutInterval: TimeInterval = 30.0,
-        maxRetries: Int = 2
+        ollamaBaseURL: String,
+        model: String,
+        timeoutInterval: TimeInterval,
+        maxRetries: Int
     ) {
         self.ollamaBaseURL = ollamaBaseURL
         self.model = model

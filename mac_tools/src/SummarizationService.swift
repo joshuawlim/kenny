@@ -14,10 +14,10 @@ public class SummarizationService {
     private let logger = Logger(subsystem: "Kenny.Summarization", category: "Service")
     
     public init(
-        llmService: LLMService = LLMService(),
+        llmService: LLMService? = nil,
         cacheManager: CacheManager = CacheManager.shared
     ) {
-        self.llmService = llmService
+        self.llmService = llmService ?? LLMService() // Use configured LLMService
         self.cacheManager = cacheManager
     }
     

@@ -23,7 +23,8 @@ struct OrchestratorCLI: AsyncParsableCommand {
             ExecuteCommand.self,
             MeetingConciergeCommand.self,
             ProactiveCommand.self,
-            WarmUpCommand.self
+            WarmUpCommand.self,
+            DebugConfigCommand.self
         ]
     )
 }
@@ -46,8 +47,8 @@ struct SearchCommand: AsyncParsableCommand {
     var types: String = ""
     
     func run() async throws {
-        // Use kenny.db in mac_tools directory as source of truth
-        let kennyDBPath = "kenny.db"
+        // Use absolute path resolution to prevent database path issues
+        let kennyDBPath = DatabasePathResolver.getKennyDatabasePath()
         let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
@@ -96,7 +97,7 @@ struct EnhancedSearchCommand: AsyncParsableCommand {
     var warmUpLLM: Bool = false
     
     func run() async throws {
-        let kennyDBPath = "kenny.db"
+        let kennyDBPath = DatabasePathResolver.getKennyDatabasePath()
         let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
@@ -143,7 +144,7 @@ struct IntentSearchCommand: AsyncParsableCommand {
     var warmUpLLM: Bool = false
     
     func run() async throws {
-        let kennyDBPath = "kenny.db"
+        let kennyDBPath = DatabasePathResolver.getKennyDatabasePath()
         let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
@@ -186,7 +187,7 @@ struct TopicSearchCommand: AsyncParsableCommand {
     var warmUpLLM: Bool = false
     
     func run() async throws {
-        let kennyDBPath = "kenny.db"
+        let kennyDBPath = DatabasePathResolver.getKennyDatabasePath()
         let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
@@ -231,7 +232,7 @@ struct IngestCommand: AsyncParsableCommand {
     var enableBackup: Bool = false
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     func run() async throws {
         print("🚀 Kenny Unified Ingestion System")
@@ -326,8 +327,8 @@ struct StatusCommand: AsyncParsableCommand {
     )
     
     func run() async throws {
-        // Use kenny.db in mac_tools directory as source of truth
-        let kennyDBPath = "kenny.db"
+        // Use absolute path resolution to prevent database path issues
+        let kennyDBPath = DatabasePathResolver.getKennyDatabasePath()
         let database = Database(path: kennyDBPath)
         let orchestrator = Orchestrator(database: database)
         
@@ -355,7 +356,7 @@ struct PlanCommand: AsyncParsableCommand {
     var query: String
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     func run() async throws {
         print("🧠 Creating execution plan for: '\(query)'")
@@ -404,7 +405,7 @@ struct ExecuteCommand: AsyncParsableCommand {
     var confirmationHash: String?
     
     @Option(name: .customLong("db-path"), help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     func run() async throws {
         print("⚡ Executing plan: \(planId)")
@@ -487,7 +488,7 @@ struct AnalyzeThreadsCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(help: "Analyze threads since this many days ago")
     var sinceDays: Int = 7
@@ -530,7 +531,7 @@ struct ProposeSlotsCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Argument(help: "Participants (comma-separated)")
     var participants: String
@@ -582,7 +583,7 @@ struct DraftEmailCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(help: "Email type (invitation, followUp, reschedule, confirmation, cancellation, reminder)")
     var type: String = "invitation"
@@ -634,7 +635,7 @@ struct FollowUpCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(help: "SLA hours")
     var slaHours: Int = 48
@@ -698,7 +699,7 @@ struct CoordinateCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Argument(help: "Meeting title")
     var title: String
@@ -1168,7 +1169,7 @@ struct SuggestionsCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(help: "Suggestion type filter")
     var type: String?
@@ -1234,7 +1235,7 @@ struct AnalyzeCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Flag(help: "Show detailed analysis progress")
     var verbose: Bool = false
@@ -1281,7 +1282,7 @@ struct TriggerCommand: AsyncParsableCommand {
     )
     
     @Option(help: "Database path")
-    var dbPath: String = "kenny.db"
+    var dbPath: String = DatabasePathResolver.getKennyDatabasePath()
     
     @Option(help: "Analysis type (meetings, emails, calendar, followups, all)")
     var analysisType: String = "all"
@@ -1330,5 +1331,75 @@ struct TriggerCommand: AsyncParsableCommand {
             print("❌ Invalid analysis type. Use: meetings, emails, calendar, followups, all")
             throw ExitCode.failure
         }
+    }
+}
+
+// MARK: - Debug Configuration Command
+
+struct DebugConfigCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "debug-config",
+        abstract: "Debug configuration and environment settings"
+    )
+    
+    func run() throws {
+        print("🔍 Kenny Configuration Debug Information")
+        print(String(repeating: "=", count: 50))
+        
+        // Get configuration manager
+        let config = ConfigurationManager.shared
+        
+        // Environment information
+        print("\n📋 Environment Information:")
+        print("• Current environment: \(config.environment.rawValue)")
+        print("• Debug mode: \(config.environment == .development ? "✅" : "❌")")
+        
+        // Database configuration
+        print("\n🗃️ Database Configuration:")
+        DatabasePathResolver.debugPathResolution()
+        
+        print("\n⚙️ Configuration Details:")
+        print("• Connection pool size: \(config.database.connectionPoolSize)")
+        print("• Query timeout: \(config.database.queryTimeout)s")
+        print("• WAL mode: \(config.database.enableWAL ? "✅" : "❌")")
+        print("• FTS enabled: \(config.database.enableFTS ? "✅" : "❌")")
+        
+        // Cache configuration
+        print("\n🗄️ Cache Configuration:")
+        print("• Cache enabled: \(config.cache.enabled ? "✅" : "❌")")
+        print("• Max memory: \(config.cache.maxMemoryMB)MB")
+        print("• Default TTL: \(config.cache.defaultTTLSeconds)s")
+        print("• Max entries: \(config.cache.maxEntries)")
+        
+        // LLM configuration
+        print("\n🤖 LLM Configuration:")
+        print("• Provider: \(config.llm.provider.rawValue)")
+        print("• Model: \(config.llm.model)")
+        print("• Endpoint: \(config.llm.endpoint)")
+        print("• Timeout: \(config.llm.timeout)s")
+        print("• Max retries: \(config.llm.maxRetries)")
+        print("• Fallback enabled: \(config.llm.enableFallback ? "✅" : "❌")")
+        
+        // Monitoring configuration
+        print("\n📊 Monitoring Configuration:")
+        print("• Monitoring enabled: \(config.monitoring.enabled ? "✅" : "❌")")
+        print("• Log level: \(config.monitoring.logLevel.rawValue)")
+        print("• Structured logging: \(config.monitoring.enableStructuredLogging ? "✅" : "❌")")
+        if let endpoint = config.monitoring.metricsEndpoint {
+            print("• Metrics endpoint: \(endpoint)")
+        } else {
+            print("• Metrics endpoint: None configured")
+        }
+        
+        // Feature flags
+        print("\n🚀 Feature Flags:")
+        print("• Hybrid search: \(config.features.enableHybridSearch ? "✅" : "❌")")
+        print("• Embeddings: \(config.features.enableEmbeddings ? "✅" : "❌")")
+        print("• Real-time sync: \(config.features.enableRealTimeSync ? "✅" : "❌")")
+        print("• Webhooks: \(config.features.enableWebhooks ? "✅" : "❌")")
+        print("• Advanced caching: \(config.features.enableAdvancedCaching ? "✅" : "❌")")
+        print("• Safety strictness: \(config.features.safetyStrictness)")
+        
+        print("\n\nConfiguration debug complete! ✅")
     }
 }

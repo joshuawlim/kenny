@@ -37,11 +37,22 @@ public class EmbeddingsService {
     private let retryDelay: TimeInterval
     private let backgroundProcessor: BackgroundProcessor
     
-    public init(model: EmbeddingModel = .nomicEmbedText, 
-                ollamaBaseURL: String = "http://localhost:11434",
-                timeoutInterval: TimeInterval = 30.0,
-                maxRetries: Int = 3,
-                retryDelay: TimeInterval = 1.0) {
+    public init(model: EmbeddingModel = .nomicEmbedText) {
+        let config = ConfigurationManager.shared.llm
+        self.model = model
+        self.ollamaBaseURL = config.endpoint
+        self.timeoutInterval = config.timeout
+        self.maxRetries = config.maxRetries
+        self.retryDelay = 1.0 // This could be added to config if needed
+        self.backgroundProcessor = BackgroundProcessor.shared
+    }
+    
+    /// Legacy initializer for custom configuration (testing/special cases)
+    public init(model: EmbeddingModel, 
+                ollamaBaseURL: String,
+                timeoutInterval: TimeInterval,
+                maxRetries: Int,
+                retryDelay: TimeInterval) {
         self.model = model
         self.ollamaBaseURL = ollamaBaseURL
         self.timeoutInterval = timeoutInterval
@@ -247,7 +258,14 @@ public class ChunkingStrategy {
     let maxChunkSize: Int
     let overlap: Int
     
-    public init(maxChunkSize: Int = 512, overlap: Int = 50) {
+    public init() {
+        let config = ConfigurationManager.shared.search
+        self.maxChunkSize = config.maxChunkSize
+        self.overlap = config.chunkOverlap
+    }
+    
+    /// Legacy initializer for custom configuration
+    public init(maxChunkSize: Int, overlap: Int) {
         self.maxChunkSize = maxChunkSize
         self.overlap = overlap
     }

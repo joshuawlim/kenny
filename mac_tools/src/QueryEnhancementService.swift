@@ -14,11 +14,11 @@ public class QueryEnhancementService {
     private let logger = Logger(subsystem: "Kenny.QueryEnhancement", category: "Service")
     
     public init(
-        llmService: LLMService = LLMService(),
+        llmService: LLMService? = nil,
         nlpProcessor: NaturalLanguageProcessor = NaturalLanguageProcessor(),
         cacheManager: CacheManager = CacheManager.shared
     ) {
-        self.llmService = llmService
+        self.llmService = llmService ?? LLMService() // Use configured LLMService
         self.nlpProcessor = nlpProcessor
         self.cacheManager = cacheManager
     }

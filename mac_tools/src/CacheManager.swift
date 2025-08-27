@@ -7,18 +7,20 @@ public class CacheManager {
     private let cache = NSCache<NSString, CacheEntry>()
     private let cacheQueue = DispatchQueue(label: "cache", qos: .utility, attributes: .concurrent)
     private let configManager: ConfigurationManager
-    private let defaultTTL: TimeInterval = 300 // 5 minutes
+    private let defaultTTL: TimeInterval
     
     private init() {
         self.configManager = ConfigurationManager.shared
         
         // Configure cache limits based on environment
         let cacheConfig = configManager.cache
+        self.defaultTTL = TimeInterval(cacheConfig.defaultTTLSeconds)
         cache.countLimit = cacheConfig.maxEntries
         cache.totalCostLimit = cacheConfig.maxMemoryMB * 1024 * 1024
         
-        // Setup periodic cache cleanup
-        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        // Setup periodic cache cleanup using configured interval
+        let cleanupInterval = TimeInterval(configManager.operational.cleanupIntervalSeconds)
+        Timer.scheduledTimer(withTimeInterval: cleanupInterval, repeats: true) { [weak self] _ in
             self?.cleanupExpiredEntries()
         }
     }
@@ -88,7 +90,7 @@ public class CacheManager {
     /// Cache embeddings with longer TTL since they're expensive to compute
     public func cacheEmbedding(_ vector: [Float], for text: String) {
         let key = "embedding:\(text.sha256())"
-        let ttl = TimeInterval(configManager.cache.defaultTTLSeconds) * 12 // 12x longer for embeddings
+        let ttl = TimeInterval(configManager.cache.defaultTTLSeconds) * TimeInterval(configManager.operational.embeddingTTLMultiplier)
         set(key, value: vector, ttl: ttl)
     }
     
