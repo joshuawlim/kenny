@@ -234,13 +234,13 @@ struct CheckLLM: AsyncParsableCommand {
             
         } else {
             print("❌ Model '\(model)' not available")
-            print("Attempting to pull model...")
+            print("Attempting to pull model (timeout: 60s)...")
             
-            do {
-                try await llmService.ensureModelAvailable()
+            let success = await llmService.ensureModelAvailable(timeout: 60.0)
+            if success {
                 print("✅ Model pulled successfully")
-            } catch {
-                print("❌ Failed to pull model: \(error)")
+            } else {
+                print("❌ Failed to pull model within timeout")
                 throw ExitCode(1)
             }
         }

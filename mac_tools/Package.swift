@@ -39,7 +39,10 @@ let package = Package(
             sources: [
                 "Utilities.swift",
                 "Database.swift",
-                "IngestManager.swift", 
+                "DatabaseConnectionManager.swift",
+                "IngestManager.swift",
+                "IngestCoordinator.swift",
+                "BackupIntegration.swift", 
                 "MailIngester.swift",
                 "NotesIngester.swift",
                 "MessagesIngester.swift",
@@ -52,6 +55,7 @@ let package = Package(
                 "HybridSearch.swift",
                 "AssistantCore.swift",
                 "LLMService.swift", 
+                "LLMWarmUpManager.swift",
                 "ToolRegistry.swift",
                 "TestAssistantCore.swift",
                 "PerformanceMonitor.swift",
@@ -72,7 +76,11 @@ let package = Package(
                 "EmailDrafter.swift",
                 "MeetingLinkGenerator.swift",
                 "FollowUpTracker.swift",
-                "NaturalLanguageProcessor.swift"
+                "NaturalLanguageProcessor.swift",
+                "ProactiveAssistant.swift",
+                "QueryEnhancementService.swift",
+                "SummarizationService.swift",
+                "EnhancedHybridSearch.swift"
             ]
         ),
         .executableTarget(

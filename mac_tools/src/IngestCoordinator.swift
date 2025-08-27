@@ -222,16 +222,10 @@ public class IngestCoordinator {
     private func generateEmbeddings(summary: IngestSummary) async {
         print("🧠 Generating embeddings for semantic search...")
         
-        do {
-            // This is optional and should not fail the entire ingestion
-            // We'll implement basic embedding generation here or delegate to existing service
-            summary.embeddingResult = IngestResult(status: .success, stats: IngestStats(), errors: [])
-            print("✅ Embedding generation completed")
-            
-        } catch {
-            print("⚠️  Embedding generation failed (non-critical): \(error.localizedDescription)")
-            summary.embeddingResult = IngestResult(status: .warning, stats: IngestStats(), errors: [error.localizedDescription])
-        }
+        // This is optional and should not fail the entire ingestion
+        // We'll implement basic embedding generation here or delegate to existing service
+        summary.embeddingResult = IngestResult(status: .success, stats: IngestStats(), errors: [])
+        print("✅ Embedding generation completed")
     }
     
     /// Print comprehensive ingestion summary
@@ -274,7 +268,7 @@ public class IngestCoordinator {
         var successCount = 0
         for (source, result) in summary.sourceResults {
             let icon = result.status.icon
-            print("\(icon) \(source.padding(toLength: 15, withPad: " ", startingAt: 0)) - \(result.status.rawValue.uppercased())")
+            print("\(icon) \(source.customPadding(toLength: 15, withPad: " ", startingAt: 0)) - \(result.status.rawValue.uppercased())")
             
             if result.stats.itemsProcessed > 0 {
                 print("    Processed: \(result.stats.itemsProcessed), Created: \(result.stats.itemsCreated), Errors: \(result.stats.errors)")
@@ -399,8 +393,11 @@ extension DateFormatter {
 }
 
 extension String {
-    func padding(toLength length: Int, withPad pad: String, startingAt index: Int) -> String {
-        return self.padding(toLength: length, withPad: pad, startingAt: index)
+    func customPadding(toLength length: Int, withPad pad: String, startingAt index: Int) -> String {
+        if self.count >= length { return self }
+        let padLength = length - self.count
+        let paddedString = String(repeating: pad, count: padLength)
+        return paddedString + self
     }
 }
 

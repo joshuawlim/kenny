@@ -109,8 +109,9 @@ public class HybridSearch {
         var combinedScores: [String: (bm25: Float, embedding: Float, snippet: String)] = [:]
         
         // Find max scores for normalization (since results are sorted by score desc)
-        let maxBM25 = bm25Results.max { $0.1 < $1.1 }?.1 ?? 1.0
-        let maxEmbedding = embeddingResults.max { $0.1 < $1.1 }?.1 ?? 1.0
+        // Only normalize if we have actual results, otherwise keep as zero
+        let maxBM25 = bm25Results.max { $0.1 < $1.1 }?.1 ?? 0.0
+        let maxEmbedding = embeddingResults.max { $0.1 < $1.1 }?.1 ?? 0.0
         
         for (docId, score, snippet) in bm25Results {
             let normalizedScore = maxBM25 > 0 ? score / maxBM25 : 0
@@ -137,6 +138,10 @@ public class HybridSearch {
         
         let results = combinedScores.compactMap { (docId, scores) -> HybridSearchResult? in
             let combinedScore = (scores.bm25 * bm25Weight) + (scores.embedding * embeddingWeight)
+            
+            // Filter out results with very low relevance scores
+            // This prevents returning random content when no good matches exist
+            guard combinedScore > 0.3 else { return nil }
             
             guard let document = try? fetchDocument(id: docId) else { return nil }
             

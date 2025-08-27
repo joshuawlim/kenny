@@ -162,7 +162,9 @@ struct IngestFull: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+                if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                    FileHandle.standardError.write(errorData)
+                }
             }
         }
     }
@@ -672,7 +674,9 @@ struct IngestMessagesOnly: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!")
+                if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                    FileHandle.standardError.write(errorData)
+                }
             }
         }
     }
@@ -781,7 +785,9 @@ struct IngestContactsOnly: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+                if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                    FileHandle.standardError.write(errorData)
+                }
             }
         }
     }
@@ -905,7 +911,9 @@ struct IngestMailOnly: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+                if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                    FileHandle.standardError.write(errorData)
+                }
             }
         }
     }
@@ -1029,7 +1037,9 @@ struct IngestCalendarOnly: AsyncParsableCommand {
                     errors: 1
                 )
                 _ = printJSON(result)
-                FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+                if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                    FileHandle.standardError.write(errorData)
+                }
             }
         }
     }
@@ -1128,7 +1138,9 @@ struct IngestWhatsAppOnly: AsyncParsableCommand {
                 errors: 1
             )
             _ = printJSON(result)
-            FileHandle.standardError.write("Error: \(error)\n".data(using: .utf8)!)
+            if let errorData = "Error: \(error)\n".data(using: .utf8) {
+                FileHandle.standardError.write(errorData)
+            }
         }
     }
 }

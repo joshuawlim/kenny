@@ -7,6 +7,7 @@ public class Orchestrator {
     private let database: Database
     private let toolLayer: ToolLayer
     private let hybridSearch: HybridSearch?
+    private let enhancedSearch: EnhancedHybridSearch?
     
     public init(database: Database, enableHybridSearch: Bool = true) {
         self.database = database
@@ -16,8 +17,10 @@ public class Orchestrator {
         if enableHybridSearch {
             let embeddingsService = EmbeddingsService()
             self.hybridSearch = HybridSearch(database: database, embeddingsService: embeddingsService)
+            self.enhancedSearch = EnhancedHybridSearch(database: database, embeddingsService: embeddingsService)
         } else {
             self.hybridSearch = nil
+            self.enhancedSearch = nil
         }
     }
     
@@ -49,6 +52,12 @@ public class Orchestrator {
         switch request.type {
         case .search:
             return try await handleSearchRequest(request)
+        case .enhancedSearch:
+            return try await handleEnhancedSearchRequest(request)
+        case .intentSearch:
+            return try await handleIntentSearchRequest(request)
+        case .topicSearch:
+            return try await handleTopicSearchRequest(request)
         case .toolExecution:
             return try await handleToolExecutionRequest(request)
         case .dataIngest:
@@ -94,6 +103,101 @@ public class Orchestrator {
             data: ["results": results.map { $0.toDictionary() }, "search_type": "bm25"],
             message: "Found \(results.count) results for '\(query)' using BM25 search"
         )
+    }
+    
+    private func handleEnhancedSearchRequest(_ request: UserRequest) async throws -> UserResponse {
+        guard let query = request.parameters["query"] as? String else {
+            throw OrchestratorError.invalidParameters("Missing query parameter")
+        }
+        
+        guard let enhancedSearch = self.enhancedSearch else {
+            throw OrchestratorError.serviceNotAvailable("Enhanced search not available")
+        }
+        
+        let limit = request.parameters["limit"] as? Int ?? 20
+        let includeSummary = request.parameters["include_summary"] as? Bool ?? true
+        let summaryLengthStr = request.parameters["summary_length"] as? String ?? "medium"
+        let summaryLength = SummaryLength(rawValue: summaryLengthStr) ?? .medium
+        
+        do {
+            let enhancedResult = try await enhancedSearch.enhancedSearch(
+                query: query,
+                limit: limit,
+                includeSummary: includeSummary,
+                summaryLength: summaryLength
+            )
+            
+            return UserResponse(
+                type: .enhancedSearchResults,
+                success: true,
+                data: enhancedResult.toDictionary(),
+                message: "Enhanced search completed: \(enhancedResult.results.count) results with \(enhancedResult.enhancedQuery.enhancementMethod.rawValue) query enhancement"
+            )
+        } catch {
+            // Fallback to basic hybrid search
+            print("Enhanced search failed, falling back to basic hybrid: \(error)")
+            return try await handleSearchRequest(request)
+        }
+    }
+    
+    private func handleIntentSearchRequest(_ request: UserRequest) async throws -> UserResponse {
+        guard let query = request.parameters["query"] as? String else {
+            throw OrchestratorError.invalidParameters("Missing query parameter")
+        }
+        
+        guard let enhancedSearch = self.enhancedSearch else {
+            throw OrchestratorError.serviceNotAvailable("Enhanced search not available")
+        }
+        
+        let limit = request.parameters["limit"] as? Int ?? 15
+        
+        do {
+            let intentResult = try await enhancedSearch.intentBasedSearch(
+                query: query,
+                limit: limit
+            )
+            
+            return UserResponse(
+                type: .intentSearchResults,
+                success: true,
+                data: intentResult.toDictionary(),
+                message: "Intent-based search completed: \(intentResult.intent.rawValue) intent with \(intentResult.results.count) results"
+            )
+        } catch {
+            // Fallback to basic search
+            print("Intent search failed, falling back to basic search: \(error)")
+            return try await handleSearchRequest(request)
+        }
+    }
+    
+    private func handleTopicSearchRequest(_ request: UserRequest) async throws -> UserResponse {
+        guard let query = request.parameters["query"] as? String else {
+            throw OrchestratorError.invalidParameters("Missing query parameter")
+        }
+        
+        guard let enhancedSearch = self.enhancedSearch else {
+            throw OrchestratorError.serviceNotAvailable("Enhanced search not available")
+        }
+        
+        let limit = request.parameters["limit"] as? Int ?? 25
+        
+        do {
+            let topicResult = try await enhancedSearch.topicSearch(
+                query: query,
+                limit: limit
+            )
+            
+            return UserResponse(
+                type: .topicSearchResults,
+                success: true,
+                data: topicResult.toDictionary(),
+                message: "Topic-based search completed: \(topicResult.totalResults) results grouped by topics"
+            )
+        } catch {
+            // Fallback to enhanced search without topic grouping
+            print("Topic search failed, falling back to enhanced search: \(error)")
+            return try await handleEnhancedSearchRequest(request)
+        }
     }
     
     private func handleToolExecutionRequest(_ request: UserRequest) async throws -> UserResponse {
@@ -278,6 +382,9 @@ public struct UserResponse {
 
 public enum RequestType: String, CaseIterable {
     case search = "search"
+    case enhancedSearch = "enhanced_search"
+    case intentSearch = "intent_search"
+    case topicSearch = "topic_search"
     case toolExecution = "tool_execution"
     case dataIngest = "data_ingest"
     case status = "status"
@@ -285,6 +392,9 @@ public enum RequestType: String, CaseIterable {
 
 public enum ResponseType: String {
     case searchResults = "search_results"
+    case enhancedSearchResults = "enhanced_search_results"
+    case intentSearchResults = "intent_search_results"
+    case topicSearchResults = "topic_search_results"
     case toolExecution = "tool_execution"
     case dataIngest = "data_ingest"
     case status = "status"
@@ -407,6 +517,7 @@ public enum OrchestratorError: Error, LocalizedError {
     case invalidParameters(String)
     case unknownDataSource(String)
     case toolExecutionFailed(String)
+    case serviceNotAvailable(String)
     
     public var errorDescription: String? {
         switch self {
@@ -416,6 +527,8 @@ public enum OrchestratorError: Error, LocalizedError {
             return "Unknown data source: \(source)"
         case .toolExecutionFailed(let msg):
             return "Tool execution failed: \(msg)"
+        case .serviceNotAvailable(let service):
+            return "Service not available: \(service)"
         }
     }
 }

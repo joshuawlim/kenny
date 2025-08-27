@@ -2,6 +2,19 @@
 
 ## Current Issues
 
+### ISSUE #14: LLM Query Enhancement Timeout
+**Severity**: High
+**Component**: QueryEnhancementService
+**Description**: LLM query enhancement consistently times out with 500ms limit
+**Symptoms**:
+- "LLM query enhancement failed, falling back to basic NLP: timeout"
+- NSURLErrorDomain Code=-999 "cancelled" errors
+- Ollama takes 1.3+ seconds to respond, but timeout is 500ms
+**Impact**: AI-powered query enhancement always falls back to basic NLP
+**Root Cause**: 500ms timeout is too aggressive for local LLM inference
+**Fix Required**: Increase timeout to 2-3 seconds for realistic local LLM performance
+**Created**: August 27, 2025
+
 ### ISSUE #10: Database Locking - Critical Issue
 **Severity**: CRITICAL
 **Component**: Database operations across all ingestion tools

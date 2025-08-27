@@ -120,7 +120,7 @@ public class BackgroundProcessor {
         Task {
             do {
                 // Execute the job task
-                let result = try await job.executeAny()
+                let _ = try await job.executeAny()
                 
                 // Job completed successfully
                 let duration = Date().timeIntervalSince(startTime)

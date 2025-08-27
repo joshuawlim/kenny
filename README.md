@@ -421,11 +421,42 @@ For real-time WhatsApp message sync:
 - Change detection and notification system
 - Health monitoring and alerting
 
-### Week 8: AI Integration & Assistance
-- Local LLM integration for query enhancement
-- Intelligent summarization across data sources
-- Automated insights and pattern detection
-- Natural language query processing
+### Week 8: AI Integration & Assistance - IN PROGRESS
+
+**Vision**: Kenny will evolve into a mobile-first web app with a conversational interface where the local LLM can access all tools directly, providing a seamless chat experience similar to modern AI assistants but with complete privacy and local control.
+
+**Immediate Priorities (Active Development):**
+
+#### Priority 1: Query Enhancement with Local LLM ⚡
+- **Status**: Starting implementation
+- **Goal**: Integrate LLMService into search pipeline for intelligent query expansion
+- **Implementation**: Use llama3.2:3b via Ollama to rewrite/expand user queries
+- **Impact**: Better semantic search results through query understanding
+
+#### Priority 2: Cross-Source Summarization 📊
+- **Status**: Starting implementation  
+- **Goal**: Generate intelligent summaries across all data sources
+- **Implementation**: Aggregate related content and create executive summaries
+- **Impact**: Quick insights from thousands of documents
+
+#### Priority 3: Pattern Detection & Insights 🔍
+- **Status**: Planned
+- **Goal**: Automated discovery of communication patterns and trends
+- **Implementation**: Temporal analysis, relationship mapping, proactive insights
+- **Impact**: Surface hidden patterns in user data
+
+#### Priority 4: Advanced NLP with LLM 🧠
+- **Status**: Planned
+- **Goal**: Replace rule-based NLP with LLM-powered understanding
+- **Implementation**: Context-aware interpretation, conversational queries
+- **Impact**: Natural conversation with Kenny
+
+**Mobile Web App Interface (Future):**
+- Terminal/CLI functionality exposed through REST API
+- Chat-based interface for natural interaction
+- All Kenny tools accessible to LLM for autonomous execution
+- Real-time streaming responses
+- Mobile-optimized UI with minimal design aesthetic
 
 ## Repository Structure
 

@@ -116,6 +116,8 @@ public class EmbeddingIngester {
             return chunkingStrategy.chunkNote(document.content, documentId: document.id)
         case "message":
             return chunkingStrategy.chunkMessage(document.content, documentId: document.id)
+        case "contact":
+            return chunkingStrategy.chunkContact(document.content, documentId: document.id)
         case "file", "document":
             return chunkingStrategy.chunkDocument(document.content, documentId: document.id)
         default:

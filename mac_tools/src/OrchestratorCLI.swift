@@ -3,6 +3,8 @@ import ArgumentParser
 import DatabaseCore
 import os.log
 
+// Import LLMWarmUpManager for warm-up functionality
+
 /// Command-line interface for testing the Orchestrator
 @main
 struct OrchestratorCLI: AsyncParsableCommand {
@@ -12,12 +14,16 @@ struct OrchestratorCLI: AsyncParsableCommand {
         version: "0.1.0",
         subcommands: [
             SearchCommand.self,
+            EnhancedSearchCommand.self,
+            IntentSearchCommand.self,
+            TopicSearchCommand.self,
             IngestCommand.self,
             StatusCommand.self,
             PlanCommand.self,
             ExecuteCommand.self,
             MeetingConciergeCommand.self,
-            ProactiveCommand.self
+            ProactiveCommand.self,
+            WarmUpCommand.self
         ]
     )
 }
@@ -66,6 +72,147 @@ struct SearchCommand: AsyncParsableCommand {
     }
 }
 
+// MARK: - Enhanced Search Commands
+
+struct EnhancedSearchCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "enhanced-search",
+        abstract: "AI-powered enhanced search with query optimization and summarization"
+    )
+    
+    @Argument(help: "Search query")
+    var query: String
+    
+    @Option(help: "Maximum number of results")
+    var limit: Int = 20
+    
+    @Option(help: "Summary length (short, medium, long, detailed)")
+    var summaryLength: String = "medium"
+    
+    @Flag(help: "Include AI-generated summary")
+    var includeSummary: Bool = false
+    
+    @Flag(help: "Warm up LLM before processing (prevents cold start delays)")
+    var warmUpLLM: Bool = false
+    
+    func run() async throws {
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
+        let orchestrator = Orchestrator(database: database)
+        
+        // Warm up LLM if requested or automatically for AI features
+        if warmUpLLM || includeSummary {
+            let llmService = LLMService()
+            let _ = await LLMWarmUpManager.shared.warmUpIfNeeded(llmService: llmService, showProgress: true)
+        }
+        
+        let request = UserRequest(
+            type: .enhancedSearch,
+            parameters: [
+                "query": query,
+                "limit": limit,
+                "include_summary": includeSummary,
+                "summary_length": summaryLength
+            ]
+        )
+        
+        do {
+            print("🚀 Running enhanced search with AI query optimization...")
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
+        }
+    }
+}
+
+struct IntentSearchCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "intent-search",
+        abstract: "Search with automatic intent detection and specialized handling"
+    )
+    
+    @Argument(help: "Search query")
+    var query: String
+    
+    @Option(help: "Maximum number of results")
+    var limit: Int = 15
+    
+    @Flag(help: "Warm up LLM before processing (prevents cold start delays)")
+    var warmUpLLM: Bool = false
+    
+    func run() async throws {
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
+        let orchestrator = Orchestrator(database: database)
+        
+        // Automatically warm up LLM for intent search (requires AI processing)
+        let llmService = LLMService()
+        let _ = await LLMWarmUpManager.shared.warmUpIfNeeded(llmService: llmService, showProgress: true)
+        
+        let request = UserRequest(
+            type: .intentSearch,
+            parameters: [
+                "query": query,
+                "limit": limit
+            ]
+        )
+        
+        do {
+            print("🎯 Analyzing intent and performing specialized search...")
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
+        }
+    }
+}
+
+struct TopicSearchCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "topic-search",
+        abstract: "Search with topic-based grouping and thematic summaries"
+    )
+    
+    @Argument(help: "Search query")
+    var query: String
+    
+    @Option(help: "Maximum number of results")
+    var limit: Int = 25
+    
+    @Flag(help: "Warm up LLM before processing (prevents cold start delays)")
+    var warmUpLLM: Bool = false
+    
+    func run() async throws {
+        let kennyDBPath = "kenny.db"
+        let database = Database(path: kennyDBPath)
+        let orchestrator = Orchestrator(database: database)
+        
+        // Automatically warm up LLM for topic search (requires AI processing)
+        let llmService = LLMService()
+        let _ = await LLMWarmUpManager.shared.warmUpIfNeeded(llmService: llmService, showProgress: true)
+        
+        let request = UserRequest(
+            type: .topicSearch,
+            parameters: [
+                "query": query,
+                "limit": limit
+            ]
+        )
+        
+        do {
+            print("📚 Performing topic-based search with thematic analysis...")
+            let response = try await orchestrator.processRequest(request)
+            printResponse(response)
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            throw ExitCode.failure
+        }
+    }
+}
+
 // MARK: - Ingest Command
 
 struct IngestCommand: AsyncParsableCommand {
@@ -81,7 +228,7 @@ struct IngestCommand: AsyncParsableCommand {
     var fullSync: Bool = false
     
     @Flag(name: .customLong("enable-backup"), help: "Create database backup before ingestion")
-    var enableBackup: Bool = true
+    var enableBackup: Bool = false
     
     @Option(name: .customLong("db-path"), help: "Database path")
     var dbPath: String = "kenny.db"
@@ -117,11 +264,10 @@ struct IngestCommand: AsyncParsableCommand {
             
             // Create error response
             let errorResponse = UserResponse(
-                success: false,
                 type: .dataIngest,
-                message: "Ingestion failed: \(error.localizedDescription)",
+                success: false,
                 data: [:],
-                timestamp: Date()
+                message: "Ingestion failed: \(error.localizedDescription)"
             )
             printResponse(errorResponse)
             throw ExitCode.failure
@@ -163,11 +309,10 @@ struct IngestCommand: AsyncParsableCommand {
             "Ingestion completed with \(totalSources - successfulSources) failures"
         
         return UserResponse(
-            success: success,
             type: .dataIngest,
-            message: message,
+            success: success,
             data: responseData,
-            timestamp: Date()
+            message: message
         )
     }
 }
@@ -945,6 +1090,60 @@ class SimpleProactiveAssistant {
     func getTopSuggestions(limit: Int = 5) async -> [ProactiveSuggestion] {
         let allSuggestions = await getCurrentSuggestions()
         return Array(allSuggestions.prefix(limit))
+    }
+}
+
+// MARK: - Warm Up Command
+
+struct WarmUpCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "warm-up",
+        abstract: "Warm up the LLM to prevent cold start delays on subsequent AI queries"
+    )
+    
+    @Flag(help: "Force warm-up even if already completed")
+    var force: Bool = false
+    
+    @Flag(help: "Show detailed warm-up progress")
+    var verbose: Bool = false
+    
+    func run() async throws {
+        print("🔥 Kenny LLM Warm-up Utility")
+        print("=============================")
+        
+        let llmService = LLMService()
+        let warmUpManager = LLMWarmUpManager.shared
+        
+        if verbose {
+            let currentStatus = await warmUpManager.status
+            print("Current warm-up status: \(currentStatus.displayName)")
+        }
+        
+        let success: Bool
+        
+        if force {
+            print("🔄 Force warming up LLM (ignoring current state)...")
+            success = await warmUpManager.forceWarmUp(llmService: llmService, showProgress: true)
+        } else {
+            success = await warmUpManager.warmUpIfNeeded(llmService: llmService, showProgress: true)
+        }
+        
+        if success {
+            print("✅ LLM warm-up completed successfully!")
+            print("💡 Your next AI-enhanced query will be much faster")
+            
+            if verbose {
+                print("🎯 Try running:")
+                print("   orchestrator_cli enhanced-search \"test query\" --include-summary")
+                print("   orchestrator_cli intent-search \"find my recent emails\"")
+                print("   orchestrator_cli topic-search \"project updates\"")
+            }
+        } else {
+            print("❌ LLM warm-up failed")
+            print("⚠️  AI features may experience cold start delays")
+            print("💡 Check that Ollama is running: http://localhost:11434")
+            throw ExitCode.failure
+        }
     }
 }
 

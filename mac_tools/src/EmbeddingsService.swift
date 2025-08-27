@@ -226,7 +226,7 @@ public class EmbeddingsService {
     func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
         guard a.count == b.count else { return 0 }
         
-        let dotProduct = zip(a, b).reduce(0) { $0 + $1.0 * $1.1 }
+        let dotProduct = zip(a, b).map(*).reduce(0, +)
         let magnitudeA = sqrt(a.reduce(0) { $0 + $1 * $1 })
         let magnitudeB = sqrt(b.reduce(0) { $0 + $1 * $1 })
         
@@ -374,6 +374,18 @@ public class ChunkingStrategy {
             startOffset: 0,
             endOffset: content.count,
             metadata: ["type": "message"]
+        )]
+    }
+    
+    public func chunkContact(_ content: String, documentId: String) -> [EmbeddingChunk] {
+        return [EmbeddingChunk(
+            id: "\(documentId)_chunk_0",
+            documentId: documentId,
+            text: content,
+            chunkIndex: 0,
+            startOffset: 0,
+            endOffset: content.count,
+            metadata: ["type": "contact"]
         )]
     }
 }

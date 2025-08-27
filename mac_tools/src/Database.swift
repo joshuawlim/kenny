@@ -1224,8 +1224,8 @@ extension Database {
                         
                         let similarity = cosineSimilarity(queryVector, adjustedVector)
                         
-                        // Use a reasonable threshold for relevance
-                        if similarity > 0.1 {
+                        // Use a strict threshold for relevance (0.7 = high similarity required)
+                        if similarity > 0.7 {
                             let snippet = String(chunkText.prefix(200))
                             results.append((id, similarity, snippet))
                         }
