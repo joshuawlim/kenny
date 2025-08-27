@@ -107,7 +107,7 @@ public struct Configuration {
             ),
             llm: LLMConfig(
                 provider: .ollama,
-                model: "llama3.2:3b",
+                model: ProcessInfo.processInfo.environment["LLM_MODEL"] ?? "mistral-small3.1:latest",
                 endpoint: "http://localhost:11434",
                 timeout: 30.0,
                 maxRetries: 3,
@@ -251,7 +251,7 @@ public struct Configuration {
             ),
             llm: LLMConfig(
                 provider: .ollama,
-                model: "llama3.2:3b",
+                model: ProcessInfo.processInfo.environment["LLM_MODEL"] ?? "mistral-small3.1:latest",
                 endpoint: ProcessInfo.processInfo.environment["OLLAMA_ENDPOINT"] ?? "http://localhost:11434",
                 timeout: 45.0,
                 maxRetries: 5,
