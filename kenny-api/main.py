@@ -30,7 +30,7 @@ from fastapi import FastAPI, HTTPException, Security, Depends, Query, Background
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator, constr
+from pydantic import BaseModel, Field, field_validator, constr
 import uvicorn
 
 # Configuration
@@ -156,21 +156,24 @@ class AssistantQuery(BaseModel):
     context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context")
     contact_id: Optional[str] = Field(default=None, description="Focus on specific contact")
     
-    @validator('mode')
+    @field_validator('mode')
+    @classmethod
     def validate_mode(cls, v):
         allowed_modes = ['qa', 'search', 'analyze', 'draft', 'summarize']
         if v not in allowed_modes:
             raise ValueError(f'Mode must be one of: {allowed_modes}')
         return v
     
-    @validator('query')
+    @field_validator('query')
+    @classmethod
     def validate_query(cls, v):
         # SECURITY: Basic sanitization to prevent injection
         if any(char in v for char in ['<script', '<iframe', 'javascript:', 'data:']):
             raise ValueError('Query contains potentially malicious content')
         return v.strip()
     
-    @validator('contact_id')
+    @field_validator('contact_id')
+    @classmethod
     def validate_contact_id(cls, v):
         if v is not None and (len(v) < 10 or len(v) > 50):
             raise ValueError('Invalid contact ID format')

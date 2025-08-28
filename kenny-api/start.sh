@@ -60,8 +60,8 @@ echo "✅ contact_memory.db found"
 
 # Set API key if not already set
 if [ -z "$KENNY_API_KEY" ]; then
-    export KENNY_API_KEY="kenny-dev-key-$(date +%s)"
-    echo "🔑 Generated temporary API key: $KENNY_API_KEY"
+    export KENNY_API_KEY="demo-key"
+    echo "🔑 Using development API key: $KENNY_API_KEY"
 else
     echo "🔑 Using API key: ${KENNY_API_KEY:0:10}..."
 fi

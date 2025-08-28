@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kenny SSE Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        #output {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            min-height: 200px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .event {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 3px solid #4CAF50;
+        }
+        .error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Kenny SSE Connection Test</h1>
+        
+        <div class="status" id="status">Ready to test</div>
+        
+        <div style="margin: 20px 0;">
+            <input type="text" id="message" placeholder="Enter your message" value="Tell me about my recent emails" />
+            <button id="sendBtn" onclick="testSSE()">Test SSE</button>
+        </div>
+        
+        <h3>Events Received:</h3>
+        <div id="output"></div>
+        
+        <h3>Final Response:</h3>
+        <div id="finalResponse" style="background: white; padding: 15px; border: 1px solid #ddd; border-radius: 4px; min-height: 50px;">
+            No response yet
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        
+        function testSSE() {
+            const outputDiv = document.getElementById('output');
+            const statusDiv = document.getElementById('status');
+            const finalResponseDiv = document.getElementById('finalResponse');
+            const sendBtn = document.getElementById('sendBtn');
+            const messageInput = document.getElementById('message');
+            
+            // Clear previous output
+            outputDiv.innerHTML = '';
+            finalResponseDiv.innerHTML = 'Waiting for response...';
+            statusDiv.innerHTML = 'Connecting...';
+            sendBtn.disabled = true;
+            
+            // Close existing connection if any
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            // Build the URL with query parameters
+            const message = encodeURIComponent(messageInput.value || 'Hello');
+            const apiKey = 'demo-key'; // Use the default demo key
+            const url = `http://localhost:8080/api/chat/stream?message=${message}&mode=qa&key=${apiKey}`;
+            
+            console.log('Connecting to:', url);
+            
+            // Create new EventSource
+            eventSource = new EventSource(url);
+            
+            let finalResponse = '';
+            
+            eventSource.onopen = function(event) {
+                statusDiv.innerHTML = '✅ Connected to Kenny API';
+                addEvent('CONNECTION', 'SSE connection opened');
+            };
+            
+            eventSource.onmessage = function(event) {
+                console.log('Received:', event.data);
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    addEvent(data.type, JSON.stringify(data, null, 2));
+                    
+                    // Handle specific event types
+                    switch(data.type) {
+                        case 'start':
+                            statusDiv.innerHTML = '🧠 ' + data.message;
+                            break;
+                        case 'tool_selection':
+                            statusDiv.innerHTML = '🔎 ' + data.message;
+                            break;
+                        case 'tool_start':
+                            statusDiv.innerHTML = '🔍 Using ' + data.tool + '...';
+                            break;
+                        case 'tool_complete':
+                            statusDiv.innerHTML = '✅ ' + data.tool + ': ' + data.result_summary;
+                            break;
+                        case 'context':
+                            statusDiv.innerHTML = '📋 Context: ' + data.summary;
+                            break;
+                        case 'response':
+                            finalResponse = data.message;
+                            finalResponseDiv.innerHTML = data.message;
+                            statusDiv.innerHTML = '✅ Response received';
+                            break;
+                        case 'done':
+                            statusDiv.innerHTML = '✅ Stream completed';
+                            eventSource.close();
+                            sendBtn.disabled = false;
+                            break;
+                        case 'error':
+                            statusDiv.innerHTML = '❌ Error: ' + data.error;
+                            addEvent('ERROR', data.error, true);
+                            eventSource.close();
+                            sendBtn.disabled = false;
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Parse error:', e);
+                    addEvent('PARSE_ERROR', 'Failed to parse: ' + event.data, true);
+                }
+            };
+            
+            eventSource.onerror = function(event) {
+                console.error('SSE Error:', event);
+                statusDiv.innerHTML = '❌ Connection error (check console)';
+                addEvent('ERROR', 'SSE connection failed', true);
+                eventSource.close();
+                sendBtn.disabled = false;
+                
+                if (!finalResponse) {
+                    finalResponseDiv.innerHTML = 'Connection failed. Make sure Kenny API is running on port 8080.';
+                }
+            };
+        }
+        
+        function addEvent(type, content, isError = false) {
+            const outputDiv = document.getElementById('output');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'event' + (isError ? ' error' : '');
+            eventDiv.innerHTML = `<strong>${type}</strong>\n${content}`;
+            outputDiv.appendChild(eventDiv);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+        
+        // Allow Enter key to send
+        document.getElementById('message').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !document.getElementById('sendBtn').disabled) {
+                testSSE();
+            }
+        });
+    </script>
+</body>
+</html>
