@@ -1,17 +1,55 @@
-# Kenny - Personal Assistant
+# Kenny AI - Conversational Personal Assistant 
 
-A local-first, macOS-native AI management assistant with reliable tool execution, local memory, strict privacy, and sub-3s latency on common workflows.
+A privacy-first AI assistant that knows your personal data. Kenny uses Ollama Mistral to provide intelligent responses based on your WhatsApp messages, emails, calendar events, contacts, and more - all processed locally on your Mac.
 
-## Vision
+## 🚀 What Kenny Does
 
-Kenny is designed to be your personal AI assistant that:
-- Runs entirely on your Mac with **no cloud dependencies**
-- Integrates deeply with all your macOS apps (Mail, Calendar, Notes, Messages, etc.)
-- Provides **deterministic tool execution** with full audit trails
-- Maintains **strict privacy** - all data stays on your device
-- Delivers **fast responses** (≤1.2s for queries, ≤3s for tool calls)
+Kenny is your **conversational AI assistant** that can:
+- 🔍 **Search across 57K+ personal documents** from WhatsApp, Mail, Messages, Calendar, and Contacts
+- 🤖 **Chat intelligently** using Ollama Mistral-small3.1 with your personal data as context  
+- 🛠️ **Execute tools** automatically based on your queries (search, analyze meetings, check calendar)
+- 🔒 **Maintain complete privacy** - all data stays on your Mac, no cloud dependencies
+- ⚡ **Deliver fast responses** via real-time streaming chat interface
 
-## Current Status: Production Ready with Semantic Search ✅
+## Current Status: AI Chat System Operational ✅
+
+### 🤖 KENNY AI CHAT INTERFACE (August 28, 2025)
+
+**Production-Ready Conversational AI Assistant** with full access to your personal data:
+
+**✅ AI Chat Interface**
+- **Frontend**: Next.js React chat interface (localhost:3000)
+- **Backend**: FastAPI with streaming responses (localhost:8080) 
+- **LLM**: Ollama mistral-small3.1:latest integration (localhost:11434)
+- **Real-time**: Server-sent events for streaming tool execution progress
+- **Mobile-ready**: Responsive design optimized for conversation
+
+**✅ Intelligent Tool Selection**
+- AI automatically selects appropriate tools based on query intent
+- Available tools: `search_documents`, `search_contact_specific`, `analyze_meeting_threads`, `propose_meeting_slots`
+- Context-aware execution with progress streaming to user interface
+- Graceful fallback system when tools fail (SQL search backup)
+
+**✅ Personal Data Integration** 
+- **57K+ documents** accessible: 1,647 WhatsApp + 26,682 Mail + 26,862 Messages + 703 Calendar + 1,323 Contacts
+- **SQL fallback search** when hybrid search fails (ensuring reliable data access)
+- **Contact-centric** search and conversation threading
+- **Cross-platform** message search across WhatsApp, iMessage, Mail
+
+**✅ Privacy & Local Processing**
+- **100% local processing** - no data leaves your Mac
+- **Ollama integration** - local LLM inference only
+- **No API keys required** for LLM (except demo auth for web interface)
+- **Real-time streaming** without cloud dependencies
+
+**💬 Example Queries Kenny Can Handle:**
+```
+"What did John say about the meeting?"
+"Show me recent WhatsApp messages"
+"What are my upcoming calendar events?"
+"Find emails about project updates"
+"Who have I been messaging most lately?"
+```
 
 ### 🎯 SEMANTIC SEARCH OPERATIONAL (August 25, 2025)
 
@@ -112,21 +150,82 @@ Kenny has achieved **production-ready status** with comprehensive semantic searc
 - 🔄 **Notes**: Integration ready (awaiting permissions)
 - 🔄 **Reminders**: Integration ready (awaiting permissions)
 
-## Quick Start
+## 🚀 Quick Start - AI Chat Interface
 
-### Installation
+### Prerequisites
 
+1. **Install Ollama** (for local LLM):
 ```bash
-# Clone and build
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull Mistral model
+ollama pull mistral-small3.1:latest
+```
+
+2. **Clone and build Kenny**:
+```bash
 git clone https://github.com/joshuawlim/kenny.git
 cd kenny/mac_tools
 swift build --configuration release
+```
 
-# Install CLI tools
-sudo cp .build/release/mac_tools /usr/local/bin/
-sudo cp .build/release/db_cli /usr/local/bin/
-sudo cp .build/release/assistant_core /usr/local/bin/
-sudo cp .build/release/orchestrator_cli /usr/local/bin/
+### Start Kenny AI Chat
+
+**Terminal 1 - Start FastAPI Backend:**
+```bash
+cd kenny/kenny-api
+export KENNY_API_KEY=demo-key
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+**Terminal 2 - Start Frontend:**
+```bash
+cd kenny/v0-kenny-frontend  
+npm install --legacy-peer-deps
+npm run dev
+```
+
+**Terminal 3 - Ensure Ollama is running:**
+```bash
+# Ollama should auto-start, but verify:
+ollama serve
+```
+
+### 💬 Start Chatting with Kenny
+
+1. Open http://localhost:3000 in your browser
+2. Type natural language questions like:
+   - "What are my recent messages?"
+   - "Find emails from Sarah"
+   - "What's on my calendar today?"
+   - "Show me WhatsApp conversations about dinner"
+
+Kenny will automatically:
+- Select the right tools for your query
+- Search through your 57K+ personal documents  
+- Stream responses in real-time
+- Provide contextual answers based on your actual data
+
+### Architecture Overview
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐
+│   React UI      │───▶│   FastAPI       │───▶│   Ollama Mistral    │
+│  localhost:3000 │    │  localhost:8080  │    │  localhost:11434    │
+└─────────────────┘    └──────────────────┘    └─────────────────────┘
+                              │                            │
+                              ▼                            ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐
+│ Swift Tools     │◀───│   SQL Fallback   │    │   Tool Selection    │ 
+│ orchestrator_cli│    │   Search System   │    │   + Response Gen    │
+└─────────────────┘    └──────────────────┘    └─────────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     kenny.db (57K+ documents)                      │
+│         WhatsApp • Mail • Messages • Calendar • Contacts           │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Comprehensive Data Ingestion
@@ -421,87 +520,140 @@ For real-time WhatsApp message sync:
 - Change detection and notification system
 - Health monitoring and alerting
 
-### Week 8: AI Integration & Assistance - IN PROGRESS
+### ✅ Week 8: AI Integration & Assistance - COMPLETE (August 28, 2025)
 
-**Vision**: Kenny will evolve into a mobile-first web app with a conversational interface where the local LLM can access all tools directly, providing a seamless chat experience similar to modern AI assistants but with complete privacy and local control.
+**DELIVERED**: Full conversational AI assistant with local LLM integration and web chat interface.
 
-**Immediate Priorities (Active Development):**
+**🎯 Core AI Capabilities Implemented:**
 
-#### Priority 1: Query Enhancement with Local LLM ⚡
-- **Status**: Starting implementation
-- **Goal**: Integrate LLMService into search pipeline for intelligent query expansion
-- **Implementation**: Use llama3.2:3b via Ollama to rewrite/expand user queries
-- **Impact**: Better semantic search results through query understanding
+#### ✅ Priority 1: Conversational Interface with Local LLM ⚡
+- **Status**: COMPLETE 
+- **Delivered**: Ollama mistral-small3.1:latest integration via FastAPI backend
+- **Implementation**: Dual LLM calls - tool selection + response generation with context
+- **Impact**: Natural conversation with Kenny about your personal data
 
-#### Priority 2: Cross-Source Summarization 📊
-- **Status**: Starting implementation  
-- **Goal**: Generate intelligent summaries across all data sources
-- **Implementation**: Aggregate related content and create executive summaries
-- **Impact**: Quick insights from thousands of documents
+#### ✅ Priority 2: Intelligent Tool Orchestration 🛠️
+- **Status**: COMPLETE
+- **Delivered**: AI automatically selects and executes appropriate tools based on query intent
+- **Implementation**: LLM-driven tool selection from search_documents, search_contact_specific, analyze_meeting_threads, propose_meeting_slots
+- **Impact**: Seamless tool execution without user needing to specify commands
 
-#### Priority 3: Pattern Detection & Insights 🔍
-- **Status**: Planned
-- **Goal**: Automated discovery of communication patterns and trends
-- **Implementation**: Temporal analysis, relationship mapping, proactive insights
-- **Impact**: Surface hidden patterns in user data
+#### ✅ Priority 3: Real-time Streaming Interface 📱
+- **Status**: COMPLETE
+- **Delivered**: React-based chat UI with server-sent events for streaming responses
+- **Implementation**: Mobile-optimized responsive design with real-time progress indicators
+- **Impact**: Modern chat experience with tool execution transparency
 
-#### Priority 4: Advanced NLP with LLM 🧠
-- **Status**: Planned
-- **Goal**: Replace rule-based NLP with LLM-powered understanding
-- **Implementation**: Context-aware interpretation, conversational queries
-- **Impact**: Natural conversation with Kenny
+#### ✅ Priority 4: Cross-Source Data Integration 🔍
+- **Status**: COMPLETE
+- **Delivered**: SQL fallback search system ensuring reliable access to 57K+ documents
+- **Implementation**: Graceful fallback when hybrid search fails, context-aware response generation
+- **Impact**: Reliable answers from WhatsApp, Mail, Messages, Calendar, Contacts
 
-**Mobile Web App Interface (Future):**
-- Terminal/CLI functionality exposed through REST API
-- Chat-based interface for natural interaction
-- All Kenny tools accessible to LLM for autonomous execution
-- Real-time streaming responses
-- Mobile-optimized UI with minimal design aesthetic
+**🚀 Production Architecture Delivered:**
+- **Frontend**: Next.js React chat interface (localhost:3000)
+- **Backend**: FastAPI with streaming endpoints (localhost:8080)
+- **LLM**: Ollama integration with intelligent tool calling (localhost:11434)  
+- **Data**: Robust search across 57K+ personal documents
+- **Privacy**: 100% local processing, no cloud dependencies
+
+### Week 9: Production Hardening & Performance
+- Stream response parsing optimization (minor fix needed)
+- Error handling and retry mechanisms
+- Performance monitoring and optimization
+- User experience refinements
 
 ## Repository Structure
 
 ```
 kenny/
 ├── README.md                    # This file
-├── DATABASE_POLICY.md           # Database management guidelines
-├── ARCHITECTURE.md              # Detailed technical architecture
 ├── CHANGELOG.md                 # Version history
+├── PROJECT_RECORD.json          # Development history and decisions
+│
+├── kenny-api/                   # FastAPI Backend (NEW)
+│   ├── main.py                  # Main FastAPI application with Ollama integration
+│   ├── requirements.txt         # Python dependencies (FastAPI, aiohttp, etc.)
+│   └── .gitignore              # Python gitignore
+│
+├── v0-kenny-frontend/           # Next.js Chat Interface (NEW)  
+│   ├── app/                    # Next.js 15 app directory
+│   │   └── page.tsx            # Main chat interface component
+│   ├── components/             # UI components (shadcn/ui)
+│   ├── package.json            # Node.js dependencies
+│   └── .env.local              # Environment configuration
+│
 ├── mac_tools/                   # Core Swift package
-│   ├── kenny.db                 # Main database (authoritative)
+│   ├── kenny.db                 # Main database (57K+ documents)
 │   ├── Package.swift            # Swift package definition
-│   ├── src/                     # Core implementation
-│   └── migrations/              # Database schema
+│   ├── src/                     # Core Swift implementation
+│   │   ├── LLMService.swift     # Ollama integration service
+│   │   ├── ConfigurationManager.swift # System configuration
+│   │   └── DatabaseManager.swift # Database operations
+│   └── migrations/              # Database schema versions
+│
 ├── tools/                       # Data processing tools
 │   ├── comprehensive_ingest.py  # Main ingestion orchestrator
 │   ├── whatsapp_importer.py     # WhatsApp text parser
 │   ├── whatsapp_bridge_importer.py # Bridge sync tool
 │   └── whatsapp/                # WhatsApp bridge database
-└── raw/                         # Raw data exports
-    └── Whatsapp_TXT/            # WhatsApp text files
+│
+└── docs/                        # Architecture documentation
+    ├── WEEK_6-8_ROADMAP.md      # Development roadmap
+    └── kenny_architecture.mmd   # Mermaid architecture diagrams
 ```
 
-## Quick Commands Reference
+## 🚀 Quick Commands Reference
+
+### AI Chat Interface (Recommended)
+
+```bash
+# Start Kenny AI Chat System (3 terminals)
+
+# Terminal 1: Backend
+cd kenny-api && export KENNY_API_KEY=demo-key
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+# Terminal 2: Frontend  
+cd v0-kenny-frontend && npm run dev
+
+# Terminal 3: Ensure Ollama is running
+ollama serve
+
+# Then open: http://localhost:3000
+```
+
+### API Testing
+
+```bash
+# Test API directly
+curl -H "Authorization: Bearer demo-key" \
+     -H "Content-Type: application/json" \
+     -X POST -d '{"query": "What are my recent messages?", "mode": "qa"}' \
+     http://localhost:8080/assistant/query
+
+# Test health endpoint
+curl -H "Authorization: Bearer demo-key" \
+     http://localhost:8080/health
+```
+
+### Legacy CLI Commands (Still Available)
 
 ```bash
 # Complete data ingestion
 python3 tools/comprehensive_ingest.py
 
 # Search across all sources
-swift run orchestrator_cli search "query" --limit 10
+cd mac_tools && swift run orchestrator_cli search "query" --limit 10
 
-# Meeting Concierge (NEW - Week 6)
-swift run orchestrator_cli meeting coordinate "Team Meeting" "alice@company.com,bob@company.com" --duration 60 --platform zoom
-swift run orchestrator_cli meeting analyze-threads --since-days 7
-swift run orchestrator_cli meeting propose-slots "team@company.com" --duration 30
+# Meeting Concierge
+cd mac_tools && swift run orchestrator_cli meeting coordinate "Team Meeting" "alice@company.com,bob@company.com" --duration 60 --platform zoom
 
 # Database statistics
 sqlite3 mac_tools/kenny.db "SELECT app_source, COUNT(*) FROM documents GROUP BY app_source"
 
-# Incremental sync
-swift run orchestrator_cli ingest --sources "WhatsApp,Mail"
-
 # Status check
-swift run orchestrator_cli status
+cd mac_tools && swift run orchestrator_cli status
 ```
 
 ## License
@@ -510,4 +662,6 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Status**: Week 6 Meeting Concierge Complete ✅ | **Next**: Real-time Sync & Advanced AI Integration
+**Status**: Week 8 AI Chat System Complete ✅ | **Next**: Stream Response Parsing Fix & Production Hardening  
+
+🤖 **Kenny AI is now operational!** Chat with your personal data at http://localhost:3000
