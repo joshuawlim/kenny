@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kenny EventSource Test</title>
+</head>
+<body>
+    <h1>Kenny EventSource Test</h1>
+    <input type="text" id="messageInput" placeholder="Type your message..." style="width: 300px;">
+    <button onclick="sendMessage()">Send</button>
+    <div id="output" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc; min-height: 100px; white-space: pre-wrap;"></div>
+
+    <script>
+        function sendMessage() {
+            const message = document.getElementById('messageInput').value;
+            if (!message.trim()) return;
+            
+            const output = document.getElementById('output');
+            output.textContent = 'Connecting...\n';
+            
+            const encodedMessage = encodeURIComponent(message);
+            const url = `http://localhost:8080/api/chat/stream?message=${encodedMessage}&mode=qa&key=demo-key`;
+            
+            console.log('Connecting to:', url);
+            
+            const eventSource = new EventSource(url);
+            
+            eventSource.onopen = function() {
+                console.log('EventSource connected');
+                output.textContent += 'Connected!\n';
+            };
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    
+                    if (data.type === 'response') {
+                        output.textContent += '\nFinal Response:\n' + data.message;
+                    } else {
+                        output.textContent += `${data.type}: ${data.message || data.tool || 'event'}\n`;
+                    }
+                } catch (e) {
+                    console.error('Parse error:', e);
+                    output.textContent += 'Parse error: ' + event.data + '\n';
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                output.textContent += 'Error occurred\n';
+                eventSource.close();
+            };
+        }
+        
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

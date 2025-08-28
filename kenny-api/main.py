@@ -583,136 +583,171 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
-# Streaming LLM Assistant Endpoint
+# Streaming LLM Assistant Endpoints
 
 @app.post("/assistant/query", dependencies=[Depends(verify_api_key)])
 async def assistant_query(request: AssistantQuery):
     """Stream LLM responses with enhanced tool calling and contact context"""
     
-    async def generate_response() -> AsyncGenerator[str, None]:
-        try:
-            execution_id = str(uuid.uuid4())
-            
-            # Start with acknowledgment
-            yield f"data: {json.dumps({
-                'type': 'start',
-                'execution_id': execution_id,
-                'message': 'Processing your query...',
-                'query': request.query
-            })}\\n\\n"
-            
-            # Get available tools
-            available_tools = [
-                {
-                    "name": "search_documents",
-                    "description": "Search across all user documents and messages from WhatsApp, Mail, Messages, Calendar, and Contacts"
-                },
-                {
-                    "name": "search_contact_specific", 
-                    "description": "Search within a specific contact's conversation thread and history"
-                },
-                {
-                    "name": "analyze_meeting_threads",
-                    "description": "Analyze email threads for meeting opportunities and scheduling conflicts"
-                },
-                {
-                    "name": "propose_meeting_slots",
-                    "description": "Propose meeting time slots based on calendar availability"
-                },
-                {
-                    "name": "get_system_status",
-                    "description": "Get system status and health information"
-                }
-            ]
-            
-            # Use LLM to intelligently select tools
-            yield f"data: {json.dumps({
-                'type': 'tool_selection',
-                'message': 'Analyzing your query to determine the best tools to use...'
-            })}\\n\\n"
-            
-            try:
-                tools_to_use = await llm_service.select_tools(request.query, available_tools)
-                
-                # Add contact-specific tool if contact_id provided
-                if request.contact_id and "search_contact_specific" not in tools_to_use:
-                    tools_to_use.append("search_contact_specific")
-                    
-            except Exception as e:
-                logger.warning(f"Tool selection failed, using default: {e}")
-                tools_to_use = ["search_documents"]
-            
-            # Execute tools
-            tool_results = {}
-            for tool_name in tools_to_use:
-                yield f"data: {json.dumps({
-                    'type': 'tool_start',
-                    'tool': tool_name,
-                    'status': 'running'
-                })}\\n\\n"
-                
-                # Prepare parameters based on tool
-                if tool_name == "search_documents":
-                    params = {"query": request.query, "limit": 10}
-                    if request.context and "sources" in request.context:
-                        params["sources"] = ",".join(request.context["sources"])
-                elif tool_name == "search_contact_specific" and request.contact_id:
-                    params = {"contact_id": request.contact_id, "query": request.query}
-                elif tool_name == "analyze_meeting_threads":
-                    params = {"since_days": 14}
-                elif tool_name == "propose_meeting_slots":
-                    # Extract participants from query or context
-                    params = {"participants": request.query, "duration": 60}
-                else:
-                    params = {}
-                
-                result = await orchestrator_service.execute_tool(tool_name, params)
-                tool_results[tool_name] = result
-                
-                yield f"data: {json.dumps({
-                    'type': 'tool_complete',
-                    'tool': tool_name,
-                    'status': result.get('status', 'unknown'),
-                    'result_summary': _summarize_tool_result(result)
-                })}\\n\\n"
-            
-            # Build context from tool results
-            context_summary = _build_context_summary(tool_results, request.contact_id)
-            
-            yield f"data: {json.dumps({
-                'type': 'context',
-                'summary': context_summary
-            })}\\n\\n"
-            
-            # Generate LLM response using Ollama
-            response = await _generate_assistant_response(request, tool_results, context_summary)
-            
-            yield f"data: {json.dumps({
-                'type': 'response',
-                'message': response
-            })}\\n\\n"
-            
-            yield f"data: {json.dumps({
-                'type': 'done',
-                'execution_id': execution_id
-            })}\\n\\n"
-            
-        except Exception as e:
-            logger.error(f"Assistant query failed: {e}")
-            yield f"data: {json.dumps({
-                'type': 'error',
-                'error': str(e),
-                'execution_id': execution_id
-            })}\\n\\n"
-    
     return StreamingResponse(
-        generate_response(),
+        assistant_query_generator(request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
     )
+
+
+@app.get("/api/chat/stream")
+async def chat_stream(
+    message: str = Query(..., description="User message to process"),
+    mode: str = Query("qa", description="Assistant mode"),
+    contact_id: Optional[str] = Query(None, description="Focus on specific contact"),
+    api_key: str = Query(..., description="API key for authentication", alias="key")
+):
+    """GET endpoint for SSE streaming compatible with EventSource"""
+    
+    # Verify API key
+    if api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # Convert query params to AssistantQuery format
+    request = AssistantQuery(
+        query=message,
+        mode=mode,
+        contact_id=contact_id
+    )
+    
+    # Use the same generator from the POST endpoint
+    return StreamingResponse(
+        assistant_query_generator(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept"
+        }
+    )
+
+async def assistant_query_generator(request: AssistantQuery) -> AsyncGenerator[str, None]:
+    """Shared generator function for both POST and GET streaming endpoints"""
+    try:
+        execution_id = str(uuid.uuid4())
+        
+        # Start with acknowledgment
+        yield f"data: {json.dumps({
+            'type': 'start',
+            'execution_id': execution_id,
+            'message': 'Processing your query...',
+            'query': request.query
+        })}\\n\\n"
+        
+        # Get available tools
+        available_tools = [
+            {
+                "name": "search_documents",
+                "description": "Search across all user documents and messages from WhatsApp, Mail, Messages, Calendar, and Contacts"
+            },
+            {
+                "name": "search_contact_specific", 
+                "description": "Search within a specific contact's conversation thread and history"
+            },
+            {
+                "name": "analyze_meeting_threads",
+                "description": "Analyze email threads for meeting opportunities and scheduling conflicts"
+            },
+            {
+                "name": "propose_meeting_slots",
+                "description": "Propose meeting time slots based on calendar availability"
+            },
+            {
+                "name": "get_system_status",
+                "description": "Get system status and health information"
+            }
+        ]
+        
+        # Use LLM to intelligently select tools
+        yield f"data: {json.dumps({
+            'type': 'tool_selection',
+            'message': 'Analyzing your query to determine the best tools to use...'
+        })}\\n\\n"
+        
+        try:
+            tools_to_use = await llm_service.select_tools(request.query, available_tools)
+            
+            # Add contact-specific tool if contact_id provided
+            if request.contact_id and "search_contact_specific" not in tools_to_use:
+                tools_to_use.append("search_contact_specific")
+                
+        except Exception as e:
+            logger.warning(f"Tool selection failed, using default: {e}")
+            tools_to_use = ["search_documents"]
+        
+        # Execute tools
+        tool_results = {}
+        for tool_name in tools_to_use:
+            yield f"data: {json.dumps({
+                'type': 'tool_start',
+                'tool': tool_name,
+                'status': 'running'
+            })}\\n\\n"
+            
+            # Prepare parameters based on tool
+            if tool_name == "search_documents":
+                params = {"query": request.query, "limit": 10}
+                if request.context and "sources" in request.context:
+                    params["sources"] = ",".join(request.context["sources"])
+            elif tool_name == "search_contact_specific" and request.contact_id:
+                params = {"contact_id": request.contact_id, "query": request.query}
+            elif tool_name == "analyze_meeting_threads":
+                params = {"since_days": 14}
+            elif tool_name == "propose_meeting_slots":
+                # Extract participants from query or context
+                params = {"participants": request.query, "duration": 60}
+            else:
+                params = {}
+            
+            result = await orchestrator_service.execute_tool(tool_name, params)
+            tool_results[tool_name] = result
+            
+            yield f"data: {json.dumps({
+                'type': 'tool_complete',
+                'tool': tool_name,
+                'status': result.get('status', 'unknown'),
+                'result_summary': _summarize_tool_result(result)
+            })}\\n\\n"
+        
+        # Build context from tool results
+        context_summary = _build_context_summary(tool_results, request.contact_id)
+        
+        yield f"data: {json.dumps({
+            'type': 'context',
+            'summary': context_summary
+        })}\\n\\n"
+        
+        # Generate LLM response using Ollama
+        response = await _generate_assistant_response(request, tool_results, context_summary)
+        
+        yield f"data: {json.dumps({
+            'type': 'response',
+            'message': response
+        })}\\n\\n"
+        
+        yield f"data: {json.dumps({
+            'type': 'done',
+            'execution_id': execution_id
+        })}\\n\\n"
+        
+    except Exception as e:
+        logger.error(f"Assistant query failed: {e}")
+        yield f"data: {json.dumps({
+            'type': 'error',
+            'error': str(e),
+            'execution_id': execution_id
+        })}\\n\\n"
 
 def _summarize_tool_result(result: Dict[str, Any]) -> str:
     """Create a brief summary of tool execution result"""
