@@ -13,13 +13,8 @@ public class DatabaseConnectionManager {
     private let dbPath: String
     
     private init() {
-        // Set default database path
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, 
-                                                 in: .userDomainMask).first!
-        let assistantDir = appSupport.appendingPathComponent("Assistant")
-        try? FileManager.default.createDirectory(at: assistantDir, 
-                                               withIntermediateDirectories: true)
-        self.dbPath = assistantDir.appendingPathComponent("assistant.db").path
+        // Use Kenny database path resolver for consistent path resolution
+        self.dbPath = DatabasePathResolver.getKennyDatabasePath()
         
         // Configure operation queue for sequential processing
         operationQueue.maxConcurrentOperationCount = 1

@@ -1,0 +1,131 @@
+flowchart TB
+
+subgraph "Client & UI"
+  ui_cli["CLI 'assistant' (Raycast/Terminal)"]
+  ui_web["v0-kenny-frontend (Web UI)"]
+end
+
+subgraph "Networking"
+  cf_tunnel["Cloudflare Tunnel (optional)"]
+end
+
+subgraph "FastAPI Backend :8080"
+  api["FastAPI Server"]
+  svc_contact["Contact Data Service"]
+  svc_search["Enhanced Search Service\n(Contact-aware Hybrid Retrieval)"]
+  svc_tools["Orchestrator Tool Service"]
+  svc_dbman["Database Manager\n(Dual connections)"]
+  sse["Server-Sent Events (Streaming)"]
+end
+
+subgraph "Swift Orchestrator & Tools"
+  orch_cli["orchestrator_cli (Swift)"]
+  mac_tools["mac_tools (Swift CLI)\nStrict JSON I/O"]
+  ingest_coord["IngestCoordinator\n(central orchestration)"]
+  ingest_mgr["IngestManager\n(sequential, no WAL conflicts)"]
+  db_conn_mgr["DatabaseConnectionManager\n(semaphore + op queue = 1)"]
+  backup_integ["BackupIntegration\n(backups before/after runs)"]
+  tool_calendar["calendar_list"]
+  tool_mail["mail_list_headers"]
+  tool_reminders["reminders_create\n(dry-run ➜ confirm)"]
+  tool_notes["notes_append\n(dry-run ➜ confirm)"]
+  tool_files["files_move\n(dry-run ➜ confirm)"]
+  tool_tcc["tcc_request"]
+  ndjson_logs["NDJSON Logs\n~/Library/Logs/Assistant/*.ndjson"]
+end
+
+subgraph "Data & Search Layer"
+  kenny_db["kenny.db (SQLite + FTS5)\n• documents, emails, events, contacts, messages, files, notes, reminders\n• relationships, provenance, tombstones\n• documents_fts (BM25)"]
+  contact_db["contact_memory.db (SQLite)\n• kenny_contacts, identities\n• contact_threads (doc links)\n• contact_memories, relationships"]
+  embeddings_idx["Embeddings Index\n(vectors + BM25 hybrid)"]
+end
+
+subgraph "Ingestion Sources (macOS + Apps)"
+  src_contacts["Contacts\n(CNContactStore)"]
+  src_calendar["Calendar\n(EventKit)"]
+  src_reminders["Reminders\n(EventKit)"]
+  src_mail["Mail\n(AppleScript)"]
+  src_notes["Notes\n(AppleScript)"]
+  src_messages["Messages\n(Direct SQLite)"]
+  src_whatsapp["WhatsApp\n(Direct SQLite)"]
+  wa_bridge["WhatsApp Bridge\n(Real-time Sync)"]
+  src_files["Files\n(FileManager)"]
+end
+
+subgraph "LLM & Intelligence"
+  llm_svc["LLM Service\n(QueryEnhancement, Summarization, NLP)"]
+  ollama["Ollama\n'mistral-small3.1:latest'"]
+end
+
+subgraph "Security & Privacy"
+  tcc_perms["TCC Permissions"]
+  guardrails["Guardrails\n(dry-run hash, restricted content, allowlists)"]
+  audit_logs["Audit Bundles\n(plan.json, confirm.json, tool_calls.json, timings.json)"]
+end
+
+subgraph "Offline Jobs & Backups"
+  emb_gen["Embeddings Generator (Python)\n(generate_missing_embeddings.py)"]
+  backups_dir["/backups/*.db"]
+end
+
+%% Client paths
+ui_cli --> api
+ui_web --> cf_tunnel --> api
+api --> sse
+
+%% Backend services
+api --> svc_contact
+api --> svc_search
+api --> svc_tools
+api --> svc_dbman
+api --> llm_svc
+
+%% Orchestrator integration
+svc_tools --> orch_cli --> mac_tools
+mac_tools --> tool_calendar
+mac_tools --> tool_mail
+mac_tools --> tool_reminders
+mac_tools --> tool_notes
+mac_tools --> tool_files
+mac_tools --> tool_tcc
+mac_tools --> db_conn_mgr
+ingest_coord --> ingest_mgr
+ingest_coord --> backup_integ
+orch_cli --> ndjson_logs
+mac_tools --> ndjson_logs
+api --> ndjson_logs
+
+%% Data layer connectivity
+svc_dbman <--> kenny_db
+svc_dbman <--> contact_db
+svc_contact --> contact_db
+svc_search --> kenny_db
+svc_search --> embeddings_idx
+mac_tools --> db_conn_mgr <--> kenny_db
+
+%% Ingestion flows
+ingest_mgr --> src_contacts --> kenny_db
+ingest_mgr --> src_calendar --> kenny_db
+ingest_mgr --> src_reminders --> kenny_db
+ingest_mgr --> src_mail --> kenny_db
+ingest_mgr --> src_notes --> kenny_db
+ingest_mgr --> src_messages --> kenny_db
+ingest_mgr --> wa_bridge --> src_whatsapp --> kenny_db
+ingest_mgr --> src_files --> kenny_db
+
+%% LLM integration
+llm_svc <--> ollama
+llm_svc --> svc_search
+llm_svc --> svc_tools
+
+%% Security & privacy
+tool_tcc --> tcc_perms
+mac_tools --> guardrails
+ndjson_logs --> audit_logs
+
+%% Embeddings & backups
+emb_gen --> embeddings_idx
+emb_gen --> kenny_db
+ingest_coord -. optional .-> emb_gen
+backup_integ --> backups_dir
+kenny_db --> backups_dir

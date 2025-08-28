@@ -24,6 +24,7 @@ from typing import Optional, List, Dict, Any, AsyncGenerator, Union
 import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
+import aiohttp
 
 from fastapi import FastAPI, HTTPException, Security, Depends, Query, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -383,6 +384,165 @@ class ContactDataService:
 
 contact_service = ContactDataService(db_manager)
 
+# LLM Service for Ollama Integration
+class OllamaLLMService:
+    """Service for Ollama LLM API integration"""
+    
+    def __init__(self, base_url: str = "http://localhost:11434", model: str = "mistral-small3.1:latest"):
+        self.base_url = base_url
+        self.model = model
+        self.timeout = 60  # 60 second timeout for LLM requests
+    
+    async def generate_response(self, prompt: str, context: str = "", max_tokens: int = 500) -> str:
+        """Generate response using Ollama chat API"""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+                # Build the full prompt with context
+                full_prompt = self._build_prompt(prompt, context)
+                
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are Kenny, a helpful AI assistant with access to the user's personal data including WhatsApp messages, emails, calendar events, and contacts. Provide concise, accurate responses based on the provided context. If you can't find specific information, suggest alternative ways to help."
+                        },
+                        {
+                            "role": "user",
+                            "content": full_prompt
+                        }
+                    ],
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                        "num_predict": max_tokens
+                    }
+                }
+                
+                async with session.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("message", {}).get("content", "I apologize, but I couldn't generate a response.")
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Ollama API error {response.status}: {error_text}")
+                        return f"I'm having trouble connecting to the AI service. Please make sure Ollama is running with the {self.model} model."
+        
+        except asyncio.TimeoutError:
+            logger.error("Ollama request timed out")
+            return "The AI service is taking too long to respond. Please try again."
+        except Exception as e:
+            logger.error(f"Ollama request failed: {e}")
+            return f"I'm experiencing technical difficulties. Please ensure Ollama is running and try again."
+    
+    def _build_prompt(self, user_query: str, context: str) -> str:
+        """Build the full prompt with context for the LLM"""
+        if not context or context == "No specific context found":
+            return f"""User Query: {user_query}
+
+I don't have specific relevant information from your data for this query. Please provide a helpful response or suggest how I can better assist you."""
+        
+        return f"""User Query: {user_query}
+
+Context from your personal data:
+{context}
+
+Based on this context from your personal data, please provide a helpful and accurate response to the user's query. If the context doesn't fully answer the question, acknowledge what information is available and suggest follow-up questions or alternative approaches."""
+    
+    async def select_tools(self, user_query: str, available_tools: List[Dict]) -> List[str]:
+        """Use LLM to intelligently select which tools to use for a query"""
+        try:
+            tools_description = "\n".join([
+                f"- {tool['name']}: {tool['description']}" 
+                for tool in available_tools
+            ])
+            
+            selection_prompt = f"""User Query: {user_query}
+
+Available tools:
+{tools_description}
+
+Based on the user's query, which tools should I use to provide the best response? 
+Return ONLY a JSON list of tool names, nothing else. For example: ["search_documents", "analyze_meeting_threads"]
+
+If the query is about general information, use search_documents.
+If it's about meetings/calendar, use analyze_meeting_threads.
+If it's about a specific contact, use search_contact_specific.
+If it's asking for meeting scheduling, use propose_meeting_slots.
+
+Tool selection:"""
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a tool selection assistant. Return only valid JSON arrays of tool names, no explanations or additional text."
+                        },
+                        {
+                            "role": "user",
+                            "content": selection_prompt
+                        }
+                    ],
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,  # Low temperature for consistent tool selection
+                        "num_predict": 50
+                    }
+                }
+                
+                async with session.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        response_text = data.get("message", {}).get("content", "").strip()
+                        
+                        # Try to parse JSON response
+                        try:
+                            tools = json.loads(response_text)
+                            if isinstance(tools, list):
+                                # Validate that selected tools exist
+                                valid_tools = [t['name'] for t in available_tools]
+                                selected = [tool for tool in tools if tool in valid_tools]
+                                return selected if selected else ["search_documents"]
+                        except json.JSONDecodeError:
+                            pass
+                        
+                        # Fallback: extract tool names from response
+                        available_names = [t['name'] for t in available_tools]
+                        found_tools = [name for name in available_names if name in response_text]
+                        return found_tools if found_tools else ["search_documents"]
+                    
+        except Exception as e:
+            logger.warning(f"Tool selection failed: {e}")
+        
+        # Default fallback
+        return ["search_documents"]
+    
+    async def check_availability(self) -> bool:
+        """Check if Ollama service is available"""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                async with session.get(f"{self.base_url}/api/tags") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        models = data.get("models", [])
+                        return any(self.model in model.get("name", "") for model in models)
+                    return False
+        except Exception:
+            return False
+
+llm_service = OllamaLLMService()
+
 # FastAPI App with lifecycle management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -441,18 +601,45 @@ async def assistant_query(request: AssistantQuery):
                 'query': request.query
             })}\\n\\n"
             
-            # Determine appropriate tools based on query and mode
-            tools_to_use = []
+            # Get available tools
+            available_tools = [
+                {
+                    "name": "search_documents",
+                    "description": "Search across all user documents and messages from WhatsApp, Mail, Messages, Calendar, and Contacts"
+                },
+                {
+                    "name": "search_contact_specific", 
+                    "description": "Search within a specific contact's conversation thread and history"
+                },
+                {
+                    "name": "analyze_meeting_threads",
+                    "description": "Analyze email threads for meeting opportunities and scheduling conflicts"
+                },
+                {
+                    "name": "propose_meeting_slots",
+                    "description": "Propose meeting time slots based on calendar availability"
+                },
+                {
+                    "name": "get_system_status",
+                    "description": "Get system status and health information"
+                }
+            ]
             
-            if request.mode == "search" or "search" in request.query.lower():
-                tools_to_use.append("search_documents")
-            if "meeting" in request.query.lower() or "schedule" in request.query.lower():
-                tools_to_use.extend(["analyze_meeting_threads", "propose_meeting_slots"])
-            if request.contact_id:
-                tools_to_use.append("search_contact_specific")
+            # Use LLM to intelligently select tools
+            yield f"data: {json.dumps({
+                'type': 'tool_selection',
+                'message': 'Analyzing your query to determine the best tools to use...'
+            })}\\n\\n"
             
-            # Default to search if no specific tools identified
-            if not tools_to_use:
+            try:
+                tools_to_use = await llm_service.select_tools(request.query, available_tools)
+                
+                # Add contact-specific tool if contact_id provided
+                if request.contact_id and "search_contact_specific" not in tools_to_use:
+                    tools_to_use.append("search_contact_specific")
+                    
+            except Exception as e:
+                logger.warning(f"Tool selection failed, using default: {e}")
                 tools_to_use = ["search_documents"]
             
             # Execute tools
@@ -497,8 +684,8 @@ async def assistant_query(request: AssistantQuery):
                 'summary': context_summary
             })}\\n\\n"
             
-            # Generate LLM response (simplified for now)
-            response = _generate_assistant_response(request, tool_results, context_summary)
+            # Generate LLM response using Ollama
+            response = await _generate_assistant_response(request, tool_results, context_summary)
             
             yield f"data: {json.dumps({
                 'type': 'response',
@@ -559,34 +746,53 @@ def _build_context_summary(tool_results: Dict, contact_id: Optional[str]) -> str
     
     return "; ".join(summaries) if summaries else "No specific context found"
 
-def _generate_assistant_response(request: AssistantQuery, tool_results: Dict, context: str) -> str:
-    """Generate assistant response based on query and tool results"""
-    # This is a simplified response generator
-    # In production, this would integrate with your LLM service
+async def _generate_assistant_response(request: AssistantQuery, tool_results: Dict, context: str) -> str:
+    """Generate assistant response using Ollama LLM with tool results context"""
     
+    # Build rich context from tool results
     search_results = []
+    context_parts = []
+    
     for tool_name, result in tool_results.items():
-        if result.get("status") == "success" and "search" in tool_name:
+        if result.get("status") == "success":
             data = result.get("data", {})
-            search_results.extend(data.get("results", []))
+            
+            if "search" in tool_name and "results" in data:
+                search_results.extend(data["results"])
+                
+                # Add search results to context
+                for i, item in enumerate(data["results"][:3]):  # Top 3 results
+                    context_parts.append(f"Search Result {i+1}:")
+                    context_parts.append(f"  Title: {item.get('title', 'Untitled')}")
+                    context_parts.append(f"  Source: {item.get('source', 'Unknown')}")
+                    context_parts.append(f"  Content: {item.get('content', '')[:200]}...")
+                    context_parts.append("")
     
-    if search_results:
-        top_result = search_results[0]
-        response = f"Based on your query '{request.query}', I found {len(search_results)} relevant items. "
-        response += f"The most relevant result is: {top_result.get('title', 'Untitled')} "
-        response += f"from {top_result.get('source', 'unknown source')}. "
-        
-        if request.contact_id:
-            contact = contact_service.get_contact_summary(request.contact_id)
-            if contact:
-                response += f"This information is related to {contact.display_name}. "
-        
-        response += "Would you like me to dive deeper into any of these results?"
-    else:
-        response = f"I couldn't find specific information about '{request.query}' in your data. "
-        response += "Try rephrasing your query or let me know what specific aspect you're looking for."
+    # Add contact context if available
+    if request.contact_id:
+        contact = contact_service.get_contact_summary(request.contact_id)
+        if contact:
+            context_parts.append(f"Contact Context: {contact.display_name}")
+            if contact.company:
+                context_parts.append(f"  Company: {contact.company}")
+            if contact.role:
+                context_parts.append(f"  Role: {contact.role}")
+            context_parts.append("")
     
-    return response
+    # Build the full context
+    rich_context = "\n".join(context_parts) if context_parts else context
+    
+    # Generate response using Ollama
+    try:
+        response = await llm_service.generate_response(request.query, rich_context)
+        return response
+    except Exception as e:
+        logger.error(f"LLM generation failed: {e}")
+        # Fallback to basic template response
+        if search_results:
+            return f"I found {len(search_results)} relevant items for '{request.query}'. The most relevant result is from {search_results[0].get('source', 'unknown source')}: {search_results[0].get('title', 'Untitled')}. Would you like me to explore this further?"
+        else:
+            return f"I couldn't find specific information about '{request.query}' in your data. Could you try rephrasing your query or provide more details?"
 
 # API Endpoints
 
@@ -621,18 +827,26 @@ async def health_check():
         # Calculate embeddings coverage (simplified)
         embeddings_coverage = 0.8 if document_count > 0 else 0.0
         
+        # Check Ollama availability
+        ollama_available = await llm_service.check_availability()
+        
         # Calculate uptime
         uptime_seconds = (datetime.now(timezone.utc) - START_TIME).total_seconds()
         
+        # Overall status considers both databases and LLM
+        overall_status = "ok" if kenny_connected and contact_connected and ollama_available else "degraded"
+        if not ollama_available:
+            overall_status += f" (Ollama {llm_service.model} unavailable)"
+        
         return HealthResponse(
-            status="ok" if kenny_connected and contact_connected else "degraded",
+            status=overall_status,
             kenny_db_connected=kenny_connected,
             contact_db_connected=contact_connected,
             kenny_db_size_mb=round(kenny_size, 2),
             document_count=document_count,
             contact_count=contact_count,
             embeddings_coverage=embeddings_coverage,
-            build="kenny-api-2.0.0",
+            build="kenny-api-2.0.0-ollama",
             uptime_seconds=round(uptime_seconds, 1)
         )
     except Exception as e:
@@ -905,6 +1119,59 @@ class OrchestratorService:
         except Exception as e:
             return {"status": "error", "error": str(e)}
     
+    def _sql_fallback_search(self, query: str, limit: int = 20) -> List[Dict]:
+        """Direct SQL search fallback when hybrid search fails"""
+        try:
+            # Simple SQL search across documents - use OR for broader results
+            search_terms = [term.strip() for term in query.lower().split() if len(term.strip()) > 2]
+            
+            if not search_terms:
+                # If no good search terms, return recent documents
+                sql = """
+                SELECT id, title, content, app_source, created_at
+                FROM documents 
+                ORDER BY created_at DESC 
+                LIMIT ?
+                """
+                params = (limit,)
+            else:
+                # Use OR for broader matching
+                search_condition = " OR ".join([f"(LOWER(content) LIKE ? OR LOWER(title) LIKE ?)" for _ in search_terms])
+                like_params = []
+                for term in search_terms:
+                    like_params.extend([f'%{term}%', f'%{term}%'])
+                
+                sql = f"""
+                SELECT id, title, content, app_source, created_at
+                FROM documents 
+                WHERE {search_condition}
+                ORDER BY created_at DESC 
+                LIMIT ?
+                """
+                params = tuple(like_params + [limit])
+            
+            with db_manager.get_kenny_connection() as conn:
+                cursor = conn.execute(sql, params)
+                rows = cursor.fetchall()
+                
+                results = []
+                for row in rows:
+                    results.append({
+                        "id": row[0],
+                        "title": row[1] or "Untitled",
+                        "content": (row[2] or "")[:300],  # Truncate content
+                        "source": row[3],
+                        "created_at": row[4] or "",
+                        "score": 0.8  # Fake score for compatibility
+                    })
+                
+                logger.info(f"SQL fallback found {len(results)} results for '{query}' with terms: {search_terms}")
+                return results
+                
+        except Exception as e:
+            logger.error(f"SQL fallback search failed: {e}")
+            return []
+
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a specific tool with parameters"""
         if tool_name == "search_documents":
@@ -912,11 +1179,32 @@ class OrchestratorService:
             limit = parameters.get("limit", 20)
             sources = parameters.get("sources")
             
+            # Try orchestrator first
             cmd_args = ["search", query, "--limit", str(limit)]
             if sources:
-                cmd_args.extend(["--sources", sources])
+                cmd_args.extend(["--types", sources])  # Use --types not --sources
             
-            return await self.execute_command(*cmd_args)
+            result = await self.execute_command(*cmd_args)
+            
+            # Check if we got results
+            if result.get("status") == "success":
+                data = result.get("data", {})
+                results = data.get("results", [])
+                
+                if not results:  # No results from orchestrator, use SQL fallback
+                    logger.info(f"Orchestrator returned 0 results for '{query}', trying SQL fallback")
+                    sql_results = self._sql_fallback_search(query, limit)
+                    
+                    if sql_results:
+                        return {
+                            "status": "success", 
+                            "data": {
+                                "results": sql_results,
+                                "search_type": "sql_fallback"
+                            }
+                        }
+            
+            return result
         
         elif tool_name == "get_system_status":
             return await self.execute_command("status")

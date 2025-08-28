@@ -1,6 +1,6 @@
 # Kenny FastAPI Backend
 
-Contact-centric AI assistant backend that unifies 234K documents across WhatsApp, Mail, Calendar, Messages, and Contacts through sophisticated database merging and LLM tool calling.
+Contact-centric AI assistant backend that unifies 57,217 documents across WhatsApp, Mail, Calendar, Messages, and Contacts through sophisticated database merging and LLM tool calling.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ Frontend (Next.js) ←→ FastAPI Backend ←→ Swift Orchestrator
                     Database Manager
                      ↙          ↘
          contact_memory.db    kenny.db
-         (Contact threading)  (234K documents)
+         (Contact threading)  (57K documents)
 ```
 
 ### Key Features
@@ -132,7 +132,7 @@ kenny_contacts (kenny_contact_id, display_name, confidence_score, ...)
 -- Phone/email/WhatsApp identity mapping  
 contact_identities (kenny_contact_id, identity_type, identity_value, ...)
 
--- Links to kenny.db documents (1,687 links)
+-- Links to kenny.db documents (1,679 links)
 contact_threads (kenny_contact_id, document_id, relationship_type, ...)
 
 -- AI-extracted memories and insights
@@ -144,10 +144,15 @@ contact_relationships (kenny_contact_id, relationship_type, company, ...)
 
 ### Kenny Database (`kenny.db`)
 ```sql
--- 234K documents from all sources
+-- 57,217 documents from all sources:
+-- • 26,682 emails
+-- • 28,009 messages  
+-- • 703 calendar events
+-- • 1,323 contacts
 documents (id, title, content, app_source, created_at, metadata_json, ...)
-
--- System contacts
+emails (id, subject, sender, recipients, content, ...)
+messages (id, chat_id, sender, content, timestamp, ...)
+events (id, title, start_time, end_time, attendees, ...)
 contacts (contact_id, first_name, last_name, primary_phone, ...)
 ```
 

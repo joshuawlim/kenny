@@ -1,8 +1,33 @@
 # Week 6-8 Roadmap & Integration Analysis
 
-**Planning Date**: August 21, 2024  
-**Foundation Status**: Week 1-5 Complete ✅  
-**Next Phase**: Advanced AI Assistant Capabilities
+**Planning Date**: August 21, 2024 (Updated: August 27, 2025)  
+**Foundation Status**: Week 1-9 Complete ✅ with CRITICAL BUG DISCOVERED  
+**Current Status**: CRITICAL PATH RESOLUTION BUG - IMMEDIATE FIX REQUIRED  
+**Next Phase**: Backend Bug Fix → Advanced AI Assistant Capabilities
+
+## 🚨 CRITICAL BUG BLOCKING ALL DEVELOPMENT
+
+### Database Path Resolution Bug - PRIORITY #1
+**Discovered**: August 27, 2025  
+**Impact**: CRITICAL - System appears broken when functional  
+**Status**: Temporary fix applied, development fix required  
+
+**Problem**: Ingestion system creates nested `mac_tools/mac_tools/kenny.db` instead of `mac_tools/kenny.db` when run from within mac_tools directory. This causes:
+- 56,799 successfully ingested documents appear as 0 documents
+- System looks completely broken when it's actually working
+- Future ingestions will repeat the problem
+- False negative system state confuses users and developers
+
+**Temporary Fix**: Database manually moved to correct location  
+**Required**: Permanent fix in Swift codebase
+
+**Development Fix Locations**:
+1. `DatabaseConnectionManager` - database path resolution logic
+2. `IngestCoordinator` - database creation/opening procedures  
+3. Any relative path handling in ingestion tools
+4. Working directory independence validation
+
+**This bug MUST be fixed before proceeding with any Week 6+ features.**
 
 ## 🎯 Week 6: Email & Calendar Concierge
 

@@ -262,6 +262,117 @@ let sinceTimestamp = if let since = since {
 
 *Week 5 validation revealed that Kenny's foundation requires significant repairs before Week 6+ features can be built. Focus shifts to fixing core data ingestion and search before proceeding with orchestration layer.*
 
+## [Week 9] - 2025-08-27
+
+### 🚨 CRITICAL BUG DISCOVERED: Database Path Resolution
+
+**Impact**: CRITICAL - System functionality vs. perceived state mismatch
+
+### Issue Summary
+During routine system validation, discovered that the ingestion system was working correctly but saving data to the wrong location, creating a false negative where the system appeared completely broken when it was actually functional.
+
+### ❌ Critical Bug Details
+
+**Problem**: Database Path Resolution Creates Nested Directories
+- **Expected**: Database created at `mac_tools/kenny.db`
+- **Actual**: Database created at `mac_tools/mac_tools/kenny.db` 
+- **Trigger**: Running ingestion commands from within the mac_tools directory
+- **Result**: 56,799 documents successfully ingested but invisible to system
+
+**User Experience Impact**: 
+- System reports 0 documents when 56,799 are successfully ingested
+- All search queries return empty results despite functional search system
+- Appears as complete system failure masking successful operation
+- False negative blocks all development and testing
+
+**Root Cause Analysis**:
+- Path resolution logic in Swift codebase incorrectly handles relative paths
+- Working directory dependency creates nested directory structure
+- Database connection manager doesn't validate final database location
+- No safeguards against creating nested `mac_tools/mac_tools/` structure
+
+### ✅ Temporary Fix Applied
+
+**Immediate Resolution**:
+- Manually moved database: `mac_tools/mac_tools/kenny.db` → `mac_tools/kenny.db`
+- Removed nested directory structure  
+- System now correctly shows 56,799 documents
+- All search functionality operational
+- **Status**: Working but requires permanent code fix
+
+### 🔧 Development Fix Required
+
+**Priority**: CRITICAL - Must fix before any new development
+
+**Code Locations to Debug**:
+1. `DatabaseConnectionManager` - database path resolution logic
+2. `IngestCoordinator` - database creation/opening procedures
+3. Relative path handling throughout ingestion tools
+4. Working directory independence validation
+
+**Required Changes**:
+- Fix path resolution to always create database at correct location
+- Add validation to prevent nested directory creation
+- Implement working directory independence for all tools
+- Add comprehensive path handling tests
+
+### 📊 Current System Health (Post-Fix)
+
+**Data Layer**: ✅ OPERATIONAL  
+- 56,799 documents successfully ingested and accessible
+- All data sources functional (emails, messages, contacts, etc.)
+- Search performance good with realistic data volumes
+
+**Search System**: ✅ OPERATIONAL
+- Hybrid search working with semantic embeddings
+- FTS5 full-text search functional
+- Advanced AI-powered search and summarization implemented
+
+**Critical Risk**: Path resolution bug will repeat on next ingestion
+
+### 🎯 Next Steps - CRITICAL PATH
+
+**Immediate (Next 1-2 days)**:
+1. Debug Swift path resolution logic
+2. Implement permanent fix for database path handling  
+3. Add comprehensive path resolution tests
+4. Validate fix with test ingestions from various working directories
+
+**Short Term**:
+- Complete path handling overhaul
+- Working directory independence verification
+- Documentation of proper tool execution
+- Prevention mechanisms for nested directory creation
+
+### ⚠️ Development Impact
+
+**Week 6+ Roadmap Status**: BLOCKED until path resolution fixed
+- All advanced features depend on reliable ingestion
+- Cannot proceed with meeting concierge or automation features
+- False negative system states break development workflow
+
+**Architecture Reliability**: Major reliability concern addressed
+- System can appear completely broken when functional
+- Critical for production deployment reliability
+- Essential for developer confidence and user experience
+
+### 📋 Lessons Learned
+
+**Testing Protocol Updates**:
+- All path resolution must be tested from multiple working directories
+- Database location validation required for all ingestion operations
+- End-to-end testing must verify data accessibility, not just ingestion success
+- False negative detection critical for system reliability
+
+**Development Standards**:
+- Working directory independence required for all CLI tools
+- Absolute path validation for critical system components
+- Comprehensive error detection for path-related issues
+
+---
+
+*Critical bug discovery highlights the importance of thorough end-to-end validation. The ingestion system was working perfectly but path resolution bug created false negative system state. Immediate fix required before continuing development.*
+
 ---
 
 *Kenny is following a strict 10-week roadmap with weekly deliverables and measurable acceptance criteria. Each week builds incrementally toward a production-ready personal AI assistant.*

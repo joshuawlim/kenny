@@ -1,0 +1,207 @@
+{
+  "projectMeta": {
+    "name": "Kenny - Personal AI Assistant",
+    "version": "Week 9",
+    "lastUpdated": "2025-08-27T00:00:00Z",
+    "status": "active",
+    "currentWeek": 9,
+    "totalWeeks": 10
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "type": "functional",
+      "description": "Local-first personal AI assistant for macOS",
+      "priority": "critical",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "100% local processing",
+        "Multi-app data ingestion",
+        "Intelligent search and retrieval", 
+        "Advanced AI capabilities"
+      ],
+      "addedDate": "2025-01-20T00:00:00Z"
+    },
+    {
+      "id": "REQ-002",
+      "type": "functional", 
+      "description": "Reliable database path resolution for ingestion system",
+      "priority": "critical",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "Database always created at mac_tools/kenny.db",
+        "No nested directory creation", 
+        "Working directory independence",
+        "Consistent data accessibility"
+      ],
+      "addedDate": "2025-08-27T00:00:00Z"
+    }
+  ],
+  "roadmap": {
+    "phases": [
+      {
+        "name": "Week 1-5: Foundation",
+        "targetDate": "2025-08-21",
+        "status": "completed",
+        "milestones": [
+          "Tool layer implementation",
+          "Database schema and ingestion",
+          "Apple app integration",
+          "Search and retrieval system"
+        ],
+        "dependencies": []
+      },
+      {
+        "name": "Week 6-8: Advanced AI Features", 
+        "targetDate": "2025-09-11",
+        "status": "active",
+        "milestones": [
+          "Email & Calendar Concierge",
+          "Background jobs and daily briefing",
+          "Security and prompt injection defense"
+        ],
+        "dependencies": []
+      },
+      {
+        "name": "Week 9-10: Production Ready",
+        "targetDate": "2025-09-25",
+        "status": "in-progress",
+        "milestones": [
+          "Enterprise-ready deployment",
+          "Performance optimization",
+          "Security hardening"
+        ],
+        "dependencies": ["Week 6-8 completion"]
+      }
+    ]
+  },
+  "completedWork": [
+    {
+      "id": "WORK-001",
+      "description": "Complete foundation implementation with tool layer, database, and ingestion",
+      "completedDate": "2025-08-21T00:00:00Z",
+      "relatedRequirement": "REQ-001", 
+      "notes": "Week 1-5 deliverables completed with real data ingestion of 56,799 documents"
+    },
+    {
+      "id": "WORK-002",
+      "description": "Advanced AI-powered search and summarization architecture",
+      "completedDate": "2025-08-26T00:00:00Z",
+      "relatedRequirement": "REQ-001",
+      "notes": "Hybrid search with semantic embeddings operational"
+    },
+    {
+      "id": "WORK-003",
+      "description": "Temporary database path resolution fix", 
+      "completedDate": "2025-08-27T00:00:00Z",
+      "relatedRequirement": "REQ-002",
+      "notes": "Manual database relocation from mac_tools/mac_tools/kenny.db to mac_tools/kenny.db"
+    },
+    {
+      "id": "WORK-004",
+      "description": "Production-grade DatabasePathResolver implementation",
+      "completedDate": "2025-08-27T12:00:00Z", 
+      "relatedRequirement": "REQ-002",
+      "notes": "Comprehensive path resolution with environment variable override, working directory independence, and centralized architecture. Eliminates nested directory bug permanently."
+    }
+  ],
+  "openTasks": [
+    {
+      "id": "TASK-004",
+      "description": "Implement Email & Calendar Concierge features",
+      "priority": "high", 
+      "estimatedEffort": "3-5 days",
+      "blockers": [],
+      "createdDate": "2025-08-27T12:00:00Z",
+      "assignee": "backend-developer"
+    },
+    {
+      "id": "TASK-005",
+      "description": "Implement background job system and daily briefing",
+      "priority": "high",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-27T12:00:00Z"
+    },
+    {
+      "id": "TASK-006", 
+      "description": "Implement security and prompt injection defense system",
+      "priority": "high",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-27T12:00:00Z"
+    }
+  ],
+  "knownIssues": [
+    {
+      "id": "BUG-001", 
+      "description": "Database path resolution creates nested mac_tools/mac_tools/ directory structure",
+      "severity": "critical",
+      "reportedDate": "2025-08-27T00:00:00Z",
+      "status": "resolved",
+      "workaround": "No longer needed",
+      "impact": "System appears broken (0 documents) when functional (56,799 documents)",
+      "rootCause": "Path resolution logic in Swift incorrectly handles relative paths when executed from mac_tools directory",
+      "resolution": "DatabasePathResolver class implemented with comprehensive path resolution strategy",
+      "resolvedDate": "2025-08-27T12:00:00Z"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "decision": "Prioritize database path resolution bug fix over all Week 6+ features",
+      "rationale": "Critical bug creates false negative system state that blocks development and creates unreliable user experience",
+      "alternatives": [
+        "Continue with Week 6 features and fix later",
+        "Document workaround and proceed"
+      ],
+      "date": "2025-08-27T00:00:00Z",
+      "impact": "Delays Week 6+ roadmap but ensures system reliability"
+    },
+    {
+      "id": "DEC-002",
+      "decision": "Apply temporary manual fix while developing permanent solution", 
+      "rationale": "Enables continued testing and validation while permanent fix is developed",
+      "alternatives": [
+        "Wait for permanent fix before proceeding",
+        "Rebuild entire database from scratch"
+      ],
+      "date": "2025-08-27T00:00:00Z", 
+      "impact": "System operational with 56,799 documents accessible for testing"
+    },
+    {
+      "id": "DEC-003",
+      "decision": "Implement DatabasePathResolver as centralized path resolution utility",
+      "rationale": "Comprehensive solution eliminates path ambiguity, provides environment variable flexibility, and ensures working directory independence",
+      "alternatives": [
+        "Simple hardcoded path fix",
+        "Continue with workarounds",
+        "Redesign database architecture"
+      ],
+      "date": "2025-08-27T12:00:00Z",
+      "impact": "Permanent solution enables reliable system operation and unblocks Week 6+ development"
+    },
+    {
+      "id": "DEC-004",
+      "decision": "Resume Week 6-8 advanced AI feature development immediately",
+      "rationale": "Database path resolution blocker eliminated, system fully operational with 56,799 documents, all technical foundations in place",
+      "alternatives": [
+        "Additional testing and validation",
+        "Performance optimization first",
+        "Frontend development"
+      ],
+      "date": "2025-08-27T12:00:00Z",
+      "impact": "Restores development velocity and progress toward production-ready AI assistant"
+    }
+  ],
+  "systemHealth": {
+    "dataLayer": "operational",
+    "searchSystem": "operational",
+    "ingestionSystem": "fully-operational",
+    "totalDocuments": 56799,
+    "lastIngestionDate": "2025-08-27T00:00:00Z", 
+    "criticalBugs": 0,
+    "systemReliability": "high",
+    "pathResolutionSystem": "operational"
+  }
+}

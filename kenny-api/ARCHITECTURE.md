@@ -27,8 +27,8 @@ The Kenny FastAPI backend provides a contact-centric AI assistant API that unifi
 ┌─────────────────────┐                 ┌─────────────────────┐
 │   contact_memory.db │                 │      kenny.db       │
 │                     │                 │                     │
-│ • 1,323 contacts    │                 │ • 234K documents    │
-│ • 1,687 doc links   │                 │ • WhatsApp          │
+│ • 1,323 contacts    │                 │ • 57K documents     │
+│ • 1,679 doc links   │                 │ • WhatsApp          │
 │ • Contact memories  │                 │ • Mail              │
 │ • Identity mapping  │                 │ • Calendar          │
 │ • Relationships     │                 │ • Messages          │

@@ -13,12 +13,8 @@ public class Database {
         if let customPath = path {
             dbPath = customPath
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, 
-                                                     in: .userDomainMask).first!
-            let assistantDir = appSupport.appendingPathComponent("Assistant")
-            try? FileManager.default.createDirectory(at: assistantDir, 
-                                                   withIntermediateDirectories: true)
-            dbPath = assistantDir.appendingPathComponent("assistant.db").path
+            // Use Kenny database path resolver for consistent path resolution
+            dbPath = DatabasePathResolver.getKennyDatabasePath()
         }
         
         openDatabase()
@@ -1025,41 +1021,34 @@ public class Database {
     }
     
     private func getProjectRoot() -> String {
-        // Check for ENV variable first
+        // Use a robust approach that always finds the correct mac_tools directory
+        // First, check for explicit environment variable
         if let envPath = ProcessInfo.processInfo.environment["KENNY_PROJECT_ROOT"] {
             if FileManager.default.fileExists(atPath: envPath + "/migrations") {
                 return envPath
             }
         }
         
-        let currentPath = FileManager.default.currentDirectoryPath
-        print("Current directory: \(currentPath)")
+        // Use the same logic as DatabasePathResolver to find mac_tools directory
+        let kennyDatabasePath = DatabasePathResolver.getKennyDatabasePath()
+        let macToolsDirectory = URL(fileURLWithPath: kennyDatabasePath).deletingLastPathComponent().path
         
-        // Search upward for migrations directory
-        var searchPath = currentPath
-        for _ in 0..<5 { // Limit search depth
-            let candidatePaths = [
-                searchPath + "/migrations",
-                searchPath + "/mac_tools/migrations",
-                "/Users/joshwlim/Documents/Kenny/mac_tools/migrations" // Direct path fix
-            ]
-            
-            for candidatePath in candidatePaths {
-                if FileManager.default.fileExists(atPath: candidatePath) {
-                    if candidatePath.contains("/mac_tools/migrations") {
-                        return candidatePath.replacingOccurrences(of: "/migrations", with: "")
-                    } else {
-                        return searchPath
-                    }
-                }
-            }
-            
-            // Move up one directory
-            let parentPath = (searchPath as NSString).deletingLastPathComponent
-            if parentPath == searchPath { break } // Reached root
-            searchPath = parentPath
+        // Verify that this directory contains the migrations folder
+        let migrationsPath = macToolsDirectory + "/migrations"
+        if FileManager.default.fileExists(atPath: migrationsPath) {
+            print("Found project root via database path resolution: \(macToolsDirectory)")
+            return macToolsDirectory
         }
         
+        // Fallback to the known absolute path
+        let fallbackPath = "/Users/joshwlim/Documents/Kenny/mac_tools"
+        if FileManager.default.fileExists(atPath: fallbackPath + "/migrations") {
+            print("Using fallback project root: \(fallbackPath)")
+            return fallbackPath
+        }
+        
+        // Last resort - use current directory
+        let currentPath = FileManager.default.currentDirectoryPath
         print("Could not find migrations directory, using current: \(currentPath)")
         return currentPath
     }
