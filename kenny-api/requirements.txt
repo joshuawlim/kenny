@@ -17,6 +17,10 @@ python-json-logger==2.0.7
 # HTTP client for Ollama integration
 aiohttp==3.9.1
 
+# Fuzzy matching and phonetic algorithms
+python-Levenshtein==0.25.0
+phonetics==1.0.5
+
 # Development dependencies (optional)
 pytest==7.4.3
 pytest-asyncio==0.21.1

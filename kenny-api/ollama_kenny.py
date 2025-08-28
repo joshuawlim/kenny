@@ -13,6 +13,19 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+# Enhanced fuzzy matching imports
+try:
+    import Levenshtein
+    LEVENSHTEIN_AVAILABLE = True
+except ImportError:
+    LEVENSHTEIN_AVAILABLE = False
+    
+try:
+    from phonetics import metaphone, soundex, dmetaphone
+    PHONETICS_AVAILABLE = True
+except ImportError:
+    PHONETICS_AVAILABLE = False
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,40 +84,152 @@ def get_session_context(session_id: str) -> List[Dict[str, Any]]:
 
 def fuzzy_match_name(query: str, full_name: str) -> float:
     """
-    Calculate fuzzy match score between query and full name
+    Enhanced fuzzy match score using multiple algorithms:
+    1. Exact and partial matching
+    2. Levenshtein distance (edit distance)
+    3. Phonetic matching (metaphone, soundex)
+    4. Name component analysis
+    
     Returns score from 0.0 to 1.0 (higher is better match)
     """
+    if not query or not full_name:
+        return 0.0
+        
     query = query.lower().strip()
     full_name = full_name.lower().strip()
     
-    # Exact match
+    # Exact match - highest priority
     if query == full_name:
         return 1.0
     
-    # Split names into parts
-    query_parts = re.split(r'\s+', query)
-    name_parts = re.split(r'\s+', full_name)
+    # Split names into parts for component analysis
+    query_parts = [part.strip() for part in re.split(r'\s+', query) if part.strip()]
+    name_parts = [part.strip() for part in re.split(r'\s+', full_name) if part.strip()]
     
-    # Check if all query parts appear in name parts
-    matches = 0
-    for q_part in query_parts:
-        for n_part in name_parts:
-            if q_part in n_part or n_part in q_part:
-                matches += 1
-                break
+    if not query_parts or not name_parts:
+        return 0.0
     
-    # Calculate base score
-    base_score = matches / len(query_parts) if query_parts else 0
-    
-    # Bonus for partial matches within words
+    # 1. Substring matching (for cases like "Courtney" in "Courtney Elyse Lim")
+    substring_score = 0.0
     if query in full_name:
-        base_score += 0.2
+        substring_score = 0.8
+    elif any(q_part in full_name for q_part in query_parts):
+        substring_score = 0.6
     
-    # Bonus for starting matches
-    if full_name.startswith(query) or any(part.startswith(query) for part in name_parts):
-        base_score += 0.1
-        
-    return min(base_score, 1.0)
+    # 2. Component matching (word-by-word)
+    component_scores = []
+    for q_part in query_parts:
+        best_match = 0.0
+        for n_part in name_parts:
+            # Exact component match
+            if q_part == n_part:
+                best_match = 1.0
+                break
+            # Partial component match  
+            elif q_part in n_part or n_part in q_part:
+                best_match = max(best_match, 0.8)
+            # Levenshtein distance for similar components
+            elif LEVENSHTEIN_AVAILABLE:
+                # Use Levenshtein ratio (0.0 to 1.0)
+                lev_score = Levenshtein.ratio(q_part, n_part)
+                if lev_score > 0.7:  # Only consider high similarity
+                    best_match = max(best_match, lev_score * 0.9)
+        component_scores.append(best_match)
+    
+    component_score = sum(component_scores) / len(component_scores) if component_scores else 0.0
+    
+    # 3. Enhanced phonetic and nickname matching
+    phonetic_score = 0.0
+    
+    # Common nickname mappings for better matching
+    nickname_mapping = {
+        'mike': ['michael'], 'mick': ['michael'], 'mickey': ['michael'],
+        'dave': ['david'], 'davey': ['david'],
+        'bob': ['robert'], 'bobby': ['robert'], 'rob': ['robert'], 'robbie': ['robert'],
+        'bill': ['william'], 'billy': ['william'], 'will': ['william'], 'willie': ['william'],
+        'jim': ['james'], 'jimmy': ['james'], 'jamie': ['james'],
+        'john': ['jonathan'], 'johnny': ['jonathan'],
+        'chris': ['christopher'], 'christie': ['christopher'],
+        'katie': ['katherine'], 'kate': ['katherine'], 'kathy': ['katherine'],
+        'beth': ['elizabeth'], 'liz': ['elizabeth'], 'lizzie': ['elizabeth'], 'betty': ['elizabeth'],
+        'sue': ['susan'], 'susie': ['susan'],
+        'tom': ['thomas'], 'tommy': ['thomas'],
+        'dan': ['daniel'], 'danny': ['daniel'],
+        'matt': ['matthew'], 'matty': ['matthew'],
+        'andy': ['andrew'], 'drew': ['andrew'],
+        'joe': ['joseph'], 'joey': ['joseph'],
+        'sam': ['samuel'], 'sammy': ['samuel']
+    }
+    
+    # Check nickname mappings first
+    for q_part in query_parts:
+        if q_part in nickname_mapping:
+            for full_form in nickname_mapping[q_part]:
+                if full_form in full_name:
+                    phonetic_score = max(phonetic_score, 0.85)
+                    break
+    
+    # Traditional phonetic matching
+    if PHONETICS_AVAILABLE and phonetic_score == 0.0:
+        try:
+            # Metaphone matching for each component
+            for q_part in query_parts:
+                query_metaphone = metaphone(q_part)
+                for n_part in name_parts:
+                    name_metaphone = metaphone(n_part)
+                    if query_metaphone and name_metaphone and query_metaphone == name_metaphone:
+                        phonetic_score = max(phonetic_score, 0.7)
+            
+            # Soundex matching for each component
+            for q_part in query_parts:
+                query_soundex = soundex(q_part)
+                for n_part in name_parts:
+                    name_soundex = soundex(n_part)
+                    if query_soundex and name_soundex and query_soundex == name_soundex:
+                        phonetic_score = max(phonetic_score, 0.6)
+                        
+            # Double Metaphone for full names
+            query_dm = dmetaphone(query)
+            name_dm = dmetaphone(full_name)
+            
+            if query_dm and name_dm:
+                if (query_dm[0] and query_dm[0] == name_dm[0]) or \
+                   (query_dm[1] and query_dm[1] == name_dm[1]):
+                    phonetic_score = max(phonetic_score, 0.8)
+        except:
+            # Ignore phonetic matching errors
+            pass
+    
+    # 4. Positional bonuses
+    positional_bonus = 0.0
+    if full_name.startswith(query):
+        positional_bonus = 0.2
+    elif any(n_part.startswith(q_part) for q_part in query_parts for n_part in name_parts):
+        positional_bonus = 0.1
+    
+    # 5. Levenshtein distance for overall similarity
+    levenshtein_score = 0.0
+    if LEVENSHTEIN_AVAILABLE:
+        try:
+            lev_ratio = Levenshtein.ratio(query, full_name)
+            if lev_ratio > 0.5:  # Only use if reasonably similar
+                levenshtein_score = lev_ratio * 0.6
+        except:
+            pass
+    
+    # Combine scores with weighted priorities
+    final_score = max(
+        substring_score,                    # Direct substring match
+        component_score + positional_bonus, # Component matching
+        phonetic_score,                     # Sound-alike matching
+        levenshtein_score                   # Overall string similarity
+    )
+    
+    # Apply minimum threshold boost for reasonable matches
+    if final_score > 0.4:
+        final_score = min(1.0, final_score + 0.1)
+    
+    return min(final_score, 1.0)
 
 # Database Functions (Tools for Ollama)
 def search_documents(query: str, limit: int = 10, source: Optional[str] = None) -> Dict[str, Any]:
@@ -224,8 +349,8 @@ def search_contacts(name: str) -> Dict[str, Any]:
                     'value': row['identity_value']
                 })
         
-        # Filter contacts with score > 0.3 and sort by score
-        filtered_contacts = [c for c in contacts.values() if c['match_score'] > 0.3]
+        # Filter contacts with lower threshold for better recall (was 0.3, now 0.15)
+        filtered_contacts = [c for c in contacts.values() if c['match_score'] > 0.15]
         filtered_contacts.sort(key=lambda x: x['match_score'], reverse=True)
         
         # Remove match_score from results (internal use only)
@@ -249,13 +374,14 @@ def search_contacts(name: str) -> Dict[str, Any]:
             'results': []
         }
 
-def get_recent_messages(days: int = 7, source: Optional[str] = None) -> Dict[str, Any]:
+def get_recent_messages(days: int = 7, source: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
     """
     Get recent messages from the last N days
     
     Args:
         days: Number of days to look back (default 7)
         source: Optional filter by source
+        limit: Maximum number of results to return (default 50)
     
     Returns:
         Dictionary containing recent messages
@@ -276,7 +402,7 @@ def get_recent_messages(days: int = 7, source: Optional[str] = None) -> Dict[str
             sql += " AND app_source = ?"
             params.append(source)
             
-        sql += " ORDER BY created_at DESC LIMIT 50"
+        sql += f" ORDER BY created_at DESC LIMIT {limit}"
         
         cursor.execute(sql, params)
         results = cursor.fetchall()
@@ -368,6 +494,11 @@ AVAILABLE_TOOLS = [
                         'type': 'string',
                         'description': 'Filter by source',
                         'enum': ['whatsapp', 'mail', 'messages', 'calendar', 'contacts']
+                    },
+                    'limit': {
+                        'type': 'integer',
+                        'description': 'Maximum number of results to return (default 50)',
+                        'default': 50
                     }
                 }
             }

@@ -2,8 +2,8 @@
   "projectMeta": {
     "name": "Kenny - Personal AI Assistant",
     "version": "Week 9",
-    "lastUpdated": "2025-08-28T00:00:00Z",
-    "status": "active",
+    "lastUpdated": "2025-08-28T18:30:00Z",
+    "status": "emergency-repair",
     "currentWeek": 9,
     "totalWeeks": 10
   },
@@ -151,75 +151,290 @@
   ],
   "openTasks": [
     {
+      "id": "TASK-009",
+      "description": "CRITICAL: Fix Tool Parameter Signature Mismatch - get_recent_messages() error",
+      "priority": "critical",
+      "estimatedEffort": "1-2 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T12:00:00Z",
+      "details": {
+        "issue": "Tool call failures due to 'limit' parameter mismatch in get_recent_messages()",
+        "rootCause": "Swift/Python API contract violations causing tool execution failures",
+        "impact": "Breaks LLM tool calling system, preventing Kenny from retrieving recent activity",
+        "files": [
+          "/kenny-api/ollama_kenny.py (function signature)",
+          "/kenny-api/main.py (tool definitions)",
+          "/mac_tools/src/OrchestratorCLI.swift (backend implementation)"
+        ],
+        "solution": "Align parameter signatures across Swift and Python APIs"
+      }
+    },
+    {
+      "id": "TASK-010",
+      "description": "CRITICAL: Implement Fuzzy Contact Matching System",
+      "priority": "critical",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T12:00:00Z",
+      "details": {
+        "issue": "Cannot match partial names like 'Courtney Lim' to 'Courtney Elyse Lim'",
+        "rootCause": "Contact search uses exact LIKE queries without fuzzy matching",
+        "impact": "Contact searches fail for partial names, reducing system effectiveness",
+        "solution": "Implement Levenshtein distance, Soundex/Metaphone phonetic matching",
+        "files": [
+          "/kenny-api/contact_resolver.py",
+          "/mac_tools/src/HybridSearch.swift",
+          "New: FuzzyContactMatcher.swift"
+        ],
+        "algorithms": [
+          "Levenshtein distance for typo tolerance",
+          "Soundex/Metaphone for phonetic matching",
+          "Configurable similarity thresholds"
+        ]
+      }
+    },
+    {
+      "id": "TASK-011",
+      "description": "CRITICAL: Reduce HybridSearch Threshold from 0.3 to 0.1",
+      "priority": "critical",
+      "estimatedEffort": "0.5-1 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T12:00:00Z",
+      "details": {
+        "issue": "Search threshold too high (0.3) causing false negatives",
+        "rootCause": "Conservative threshold excludes relevant results",
+        "impact": "Users miss relevant information, degrading search effectiveness",
+        "files": [
+          "/mac_tools/src/HybridSearch.swift:144",
+          "/mac_tools/src/ConfigurationManager.swift:133"
+        ],
+        "solution": "Lower threshold to 0.1 and add configurable thresholds per data source"
+      }
+    },
+    {
+      "id": "TASK-012",
+      "description": "STRATEGIC: Build Unified Search Orchestrator",
+      "priority": "high",
+      "estimatedEffort": "4-6 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T12:00:00Z",
+      "details": {
+        "issue": "3 disconnected search paths: Swift HybridSearch, Python SQL fallback, contact search",
+        "rootCause": "Fragmented search architecture without unified routing",
+        "impact": "Inconsistent search results, maintenance complexity, missed cross-domain results",
+        "solution": "Create unified search orchestrator that routes queries intelligently",
+        "architecture": [
+          "Query classification (contact vs content vs mixed)",
+          "Intelligent routing to appropriate search engines",
+          "Result merging and deduplication",
+          "Fallback chain management"
+        ],
+        "files": [
+          "New: UnifiedSearchOrchestrator.swift",
+          "/kenny-api/main.py (search routing)",
+          "/mac_tools/src/HybridSearch.swift (integration)"
+        ]
+      }
+    },
+    {
+      "id": "TASK-013",
+      "description": "STRATEGIC: Implement Contact Entity Graph",
+      "priority": "high",
+      "estimatedEffort": "5-7 days",
+      "blockers": ["TASK-010"],
+      "createdDate": "2025-08-28T12:00:00Z",
+      "details": {
+        "issue": "No relationship tracking between contacts and conversations",
+        "rootCause": "Contacts exist in isolation without conversation context",
+        "impact": "Cannot track communication patterns, missed relationship insights",
+        "solution": "Build graph database of contact relationships and communication patterns",
+        "features": [
+          "Contact-conversation relationship mapping",
+          "Communication frequency analysis",
+          "Relationship strength scoring",
+          "Cross-platform contact identity resolution"
+        ],
+        "files": [
+          "New: ContactEntityGraph.swift",
+          "/kenny-api/contact_memory.db (schema updates)",
+          "/mac_tools/src/Database.swift (graph queries)"
+        ]
+      }
+    },
+    {
+      "id": "TASK-014",
+      "description": "EMERGENCY: Fix FTS5 Database Schema Corruption - 'no such column: T.snippet'",
+      "priority": "critical",
+      "estimatedEffort": "2-4 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T18:30:00Z",
+      "details": {
+        "issue": "FTS5_Update component failing with 'no such column: T.snippet' error during data ingestion",
+        "rootCause": "SQLite FTS5 schema mismatch where query attempts to access non-existent 'snippet' column with table alias 'T'",
+        "impact": "Search functionality completely broken for one data source (12.5% system failure), compromising Kenny's core value proposition",
+        "urgency": "EMERGENCY - Core search functionality compromised",
+        "solution": "Database schema investigation and repair",
+        "investigationSteps": [
+          "1. Examine FTS5 table structure in kenny.db",
+          "2. Audit all queries using 'snippet' column with 'T' alias", 
+          "3. Check for incomplete migrations or corrupted virtual tables",
+          "4. Validate data source specific schema requirements",
+          "5. Test schema repair and data re-ingestion"
+        ],
+        "files": [
+          "/tools/comprehensive_ingest.py (ingestion process)",
+          "/mac_tools/kenny.db (database schema)",
+          "/mac_tools/src/Database.swift (FTS5 queries)",
+          "/kenny-api/ (any FTS5 query implementations)"
+        ],
+        "successCriteria": [
+          "All 8 data sources ingest successfully (100% success rate)",
+          "FTS5 queries execute without column errors",
+          "Search functionality restored across all data sources",
+          "No regression in existing search capabilities"
+        ],
+        "riskAssessment": "HIGH - Database corruption could spread or require complete re-ingestion of 57K+ documents"
+      }
+    },
+    {
       "id": "TASK-004",
       "description": "Implement Email & Calendar Concierge features",
-      "priority": "high", 
+      "priority": "medium", 
       "estimatedEffort": "3-5 days",
-      "blockers": [],
+      "blockers": ["TASK-009", "TASK-010", "TASK-011"],
       "createdDate": "2025-08-27T12:00:00Z",
       "assignee": "backend-developer"
     },
     {
-      "id": "TASK-005",
-      "description": "Implement background job system and daily briefing",
-      "priority": "high",
-      "estimatedEffort": "2-3 days",
-      "blockers": [],
-      "createdDate": "2025-08-27T12:00:00Z"
-    },
-    {
-      "id": "TASK-006", 
-      "description": "Implement security and prompt injection defense system",
-      "priority": "high",
-      "estimatedEffort": "2-3 days",
-      "blockers": [],
-      "createdDate": "2025-08-27T12:00:00Z"
-    },
-    {
       "id": "TASK-007",
       "description": "Modern Chat UI Upgrade - Fixed Height Container Implementation",
-      "priority": "critical",
+      "priority": "medium",
       "estimatedEffort": "4-6 days",
-      "blockers": [],
+      "blockers": ["TASK-009"],
       "createdDate": "2025-08-28T00:00:00Z",
       "details": {
         "issue": "Chat UI grows vertically downwards indefinitely",
         "solution": "Fixed height container with proper scrolling, modern animations, message bubbles that don't expand infinitely",
-        "reference": "https://github.com/run-llama/chat-ui patterns",
-        "features": [
-          "Fixed height container with scrolling",
-          "Modern animations and micro-interactions",
-          "Non-expanding message bubbles",
-          "Typing indicators",
-          "Smooth transitions"
-        ]
+        "reference": "https://github.com/run-llama/chat-ui patterns"
       }
     },
     {
       "id": "TASK-008",
       "description": "Comprehensive Tool Capability Mapping & Testing",
-      "priority": "high",
+      "priority": "medium",
       "estimatedEffort": "5-7 days",
-      "blockers": [],
-      "createdDate": "2025-08-28T00:00:00Z",
-      "details": {
-        "scope": {
-          "contacts": "Search, fuzzy matching, identity resolution",
-          "mail": "Search by sender, subject, date range",
-          "messages": "Cross-platform search (iMessage, WhatsApp, etc.)",
-          "calendar": "Event search, meeting detection",
-          "whatsapp": "Message history, contact linking"
-        },
-        "deliverables": [
-          "Comprehensive capability documentation",
-          "Playwright test suite for each tool",
-          "Reliability validation framework",
-          "Performance benchmarks"
-        ]
-      }
+      "blockers": ["TASK-009", "TASK-010", "TASK-011"],
+      "createdDate": "2025-08-28T00:00:00Z"
     }
   ],
   "knownIssues": [
+    {
+      "id": "BUG-003",
+      "description": "Tool Parameter Signature Mismatch - get_recent_messages() limit parameter",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T12:00:00Z",
+      "status": "open",
+      "workaround": "None - breaks tool calling functionality",
+      "impact": "Prevents LLM from executing get_recent_messages tool, degrading AI capabilities",
+      "rootCause": "Swift/Python API contract violations in tool parameter definitions",
+      "relatedTask": "TASK-009",
+      "userReportDetails": {
+        "errorMessage": "Error: get_recent_messages() got an unexpected keyword argument 'limit'",
+        "userQuery": "Find me 10 recent messages",
+        "context": "Kenny shows 'Kenny is thinking...' then fails with Python function signature error",
+        "location": "Kenny chat interface frontend",
+        "timestamp": "2025-08-28T18:00:00Z",
+        "affectedFiles": [
+          "kenny-api/main.py",
+          "kenny-api/ollama_kenny.py"
+        ]
+      }
+    },
+    {
+      "id": "BUG-004",
+      "description": "Fuzzy Contact Matching Missing - Cannot match partial names",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T12:00:00Z",
+      "status": "open",
+      "workaround": "Use full contact names only",
+      "impact": "Contact searches fail for partial names like 'Courtney Lim' -> 'Courtney Elyse Lim'",
+      "rootCause": "Contact search uses exact LIKE queries without fuzzy matching algorithms",
+      "relatedTask": "TASK-010"
+    },
+    {
+      "id": "BUG-005",
+      "description": "HybridSearch Threshold Too High - False negatives in search results",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T12:00:00Z",
+      "status": "open",
+      "workaround": "Use more specific search terms",
+      "impact": "Relevant search results excluded due to 0.3 threshold, reducing search effectiveness",
+      "rootCause": "Conservative 0.3 threshold in HybridSearch.swift and ConfigurationManager.swift",
+      "relatedTask": "TASK-011"
+    },
+    {
+      "id": "BUG-006",
+      "description": "Fragmented Search Architecture - 3 disconnected search paths",
+      "severity": "high",
+      "reportedDate": "2025-08-28T12:00:00Z",
+      "status": "open",
+      "workaround": "Manually try different search approaches",
+      "impact": "Inconsistent search results, maintenance complexity, missed cross-domain insights",
+      "rootCause": "No unified search orchestrator routing queries intelligently",
+      "relatedTask": "TASK-012"
+    },
+    {
+      "id": "BUG-007",
+      "description": "Contact Entity Graph Missing - No relationship tracking",
+      "severity": "high",
+      "reportedDate": "2025-08-28T12:00:00Z",
+      "status": "open",
+      "workaround": "Manual contact relationship management",
+      "impact": "Cannot track communication patterns or relationship insights",
+      "rootCause": "Contacts exist in isolation without conversation context mapping",
+      "relatedTask": "TASK-013"
+    },
+    {
+      "id": "BUG-008",
+      "description": "FTS5 Database Schema Corruption - 'no such column: T.snippet' Error",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T18:30:00Z",
+      "status": "open",
+      "workaround": "System partially functional (7/8 sources working)",
+      "impact": "Search functionality compromised for one data source, affecting search across 57K+ documents. Users receive incomplete results when searching personal data.",
+      "rootCause": "SQLite FTS5 schema mismatch where query attempts to access non-existent 'snippet' column with table alias 'T'",
+      "technicalDetails": {
+        "component": "FTS5_Update",
+        "errorMessage": "no such column: T.snippet",
+        "context": "Data ingestion process using comprehensive_ingest.py",
+        "successRate": "87.5% (7/8 sources)",
+        "affectedSystem": "Full-Text Search indexing for Kenny AI",
+        "databaseType": "SQLite FTS5",
+        "impactArea": "Search capabilities across document collection"
+      },
+      "systemContext": {
+        "totalDocuments": "57K+",
+        "partialFunctionality": true,
+        "searchDegradation": "Complete failure for one data source type",
+        "likelyAffectedSources": ["WhatsApp", "Mail", "Messages", "Calendar", "Contacts"],
+        "coreValueProposition": "Fast text search across personal data - COMPROMISED"
+      },
+      "urgencyReason": "Database schema corruption directly impacts Kenny AI's core search functionality, which is fundamental to user experience and system value",
+      "requiredInvestigation": [
+        "Database schema integrity check",
+        "FTS5 table structure validation", 
+        "Migration history analysis",
+        "Query pattern audit for 'snippet' column usage",
+        "Data source specific schema differences"
+      ],
+      "potentialCauses": [
+        "Incomplete database migration",
+        "Corrupted FTS5 virtual table",
+        "Version mismatch in SQLite FTS5 extensions",
+        "Data source schema evolution without proper migration",
+        "Query template using incorrect column aliases"
+      ]
+    },
     {
       "id": "BUG-001", 
       "description": "Database path resolution creates nested mac_tools/mac_tools/ directory structure",
@@ -240,7 +455,8 @@
       "status": "open",
       "workaround": "Manual scrolling required for long conversations",
       "impact": "Degrades user experience as conversations become difficult to navigate and visually overwhelming",
-      "rootCause": "Missing fixed height container with proper scrolling implementation"
+      "rootCause": "Missing fixed height container with proper scrolling implementation",
+      "relatedTask": "TASK-007"
     }
   ],
   "decisions": [
@@ -313,21 +529,79 @@
       ],
       "date": "2025-08-28T00:00:00Z",
       "impact": "Establishes reliable foundation for tool ecosystem and improves user confidence in system capabilities"
+    },
+    {
+      "id": "DEC-007",
+      "decision": "Prioritize 5 critical issues over all other development work",
+      "rationale": "Tool parameter mismatches, missing fuzzy matching, and high search thresholds are blocking core Kenny functionality. These fundamental issues must be resolved before building additional features, as they affect the reliability and effectiveness of the entire system",
+      "alternatives": [
+        "Continue with feature development and fix issues later",
+        "Address issues incrementally alongside new features",
+        "Focus on UI improvements first"
+      ],
+      "date": "2025-08-28T12:00:00Z",
+      "impact": "Ensures solid foundation for Kenny's core search and tool execution capabilities, preventing technical debt accumulation",
+      "priorityOrder": [
+        "TASK-009: Tool Parameter Signature Fix (1-2 days)",
+        "TASK-011: HybridSearch Threshold Reduction (0.5-1 days)", 
+        "TASK-010: Fuzzy Contact Matching (2-3 days)",
+        "TASK-012: Unified Search Orchestrator (4-6 days)",
+        "TASK-013: Contact Entity Graph (5-7 days)"
+      ]
+    },
+    {
+      "id": "DEC-008",
+      "decision": "Escalate FTS5 database schema corruption to EMERGENCY priority - halt all development",
+      "rationale": "Critical database corruption (BUG-008) has compromised Kenny's core search functionality with 12.5% system failure rate. This directly attacks Kenny's fundamental value proposition of reliable personal data search. The corruption could spread or require complete re-ingestion of 57K+ documents if not addressed immediately",
+      "alternatives": [
+        "Work around the failing data source and continue development",
+        "Accept 87.5% functionality as acceptable",
+        "Schedule database repair after completing other critical tasks"
+      ],
+      "date": "2025-08-28T18:30:00Z",
+      "impact": "All development priorities reorganized around database integrity. System status changed to 'emergency-repair'. Core search functionality must be restored before any feature development continues",
+      "urgencyFactors": [
+        "Core value proposition compromised (fast text search)",
+        "Database corruption could spread to other sources", 
+        "User experience severely degraded with incomplete search results",
+        "Risk of requiring complete 57K+ document re-ingestion",
+        "System reliability dropped from 'medium' to 'low'"
+      ],
+      "newPriorityOrder": [
+        "TASK-014: EMERGENCY FTS5 Database Schema Repair (2-4 days)",
+        "TASK-009: Tool Parameter Signature Fix (1-2 days)",
+        "TASK-011: HybridSearch Threshold Reduction (0.5-1 days)",
+        "All other tasks blocked until database integrity restored"
+      ]
     }
   ],
   "systemHealth": {
-    "dataLayer": "operational",
-    "searchSystem": "operational",
-    "ingestionSystem": "fully-operational",
+    "dataLayer": "corrupted",
+    "searchSystem": "critically-degraded", 
+    "ingestionSystem": "partially-failing",
+    "fts5DatabaseSchema": "corrupted",
     "totalDocuments": 56799,
     "lastIngestionDate": "2025-08-27T00:00:00Z", 
-    "criticalBugs": 0,
-    "systemReliability": "high",
+    "lastIngestionAttempt": "2025-08-28T18:30:00Z",
+    "ingestionSuccessRate": "87.5% (7/8 sources)",
+    "criticalBugs": 4,
+    "systemReliability": "low",
     "pathResolutionSystem": "operational",
     "uiSystem": "needs-major-upgrade",
     "sessionMemory": "operational",
     "toolCallRendering": "operational",
-    "fuzzyContactMatching": "operational",
-    "thinkingLayer": "operational"
+    "fuzzyContactMatching": "missing",
+    "thinkingLayer": "operational",
+    "toolParameterSignatures": "broken-confirmed-by-user",
+    "hybridSearchThreshold": "too-high",
+    "searchArchitecture": "fragmented",
+    "contactEntityGraph": "missing",
+    "databaseIntegrity": "compromised-fts5-schema-error",
+    "searchFunctionality": "incomplete-results-one-source-failing",
+    "currentPhase": "emergency-database-repair-required",
+    "nextMilestone": "resolve-6-critical-issues-including-database-corruption",
+    "estimatedResolutionTime": "15-23 days",
+    "emergencyPriority": "TASK-014 - FTS5 Database Schema Corruption",
+    "coreValueProposition": "COMPROMISED - Search functionality partially broken"
   }
 }

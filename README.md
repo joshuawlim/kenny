@@ -603,6 +603,41 @@ kenny/
     └── kenny_architecture.mmd   # Mermaid architecture diagrams
 ```
 
+## 🚨 CRITICAL MEMORY & SEARCH ISSUES IDENTIFIED (August 28, 2025)
+
+### Memory Function Problems
+Kenny's current memory and search architecture has significant limitations that prevent effective query resolution:
+
+**1. No Fuzzy String Matching**
+- Contact search uses exact LIKE queries (`WHERE display_name LIKE ?`)
+- Cannot match "Courtney Lim" to "Courtney Elyse Lim" 
+- No phonetic matching (Soundex/Metaphone) for name variations
+- No Levenshtein distance for typo tolerance
+
+**2. Poor Entity Resolution**
+- Fragmented search paths between Swift HybridSearch, Python SQL fallback, and contact search
+- No unified entity resolver to link names across data sources
+- Missing relationship graph between contacts and conversations
+- High search threshold (0.3) causes false negatives
+
+**3. Tool Parameter Mismatches**
+- `get_recent_messages()` signature errors breaking tool calls
+- Swift/Python API contract violations
+- Missing limit parameter handling in tool definitions
+
+**4. Database Discrepancies**
+- README claims 178K+ WhatsApp messages but actual count may be significantly lower
+- Need to verify actual document counts vs claimed 234K+ documents
+- Backup recovery may be required to restore missing data
+
+### Implementation Plan (4 Weeks)
+**Phase 1**: Fuzzy matching module with Levenshtein distance + phonetic algorithms
+**Phase 2**: Unified search orchestrator replacing fragmented paths  
+**Phase 3**: Contact entity graph with relationship tracking
+**Phase 4**: Tool refinement, threshold adjustment, and comprehensive testing
+
+**Critical Fix Priority**: Database verification → Tool signatures → Fuzzy matching → Unified search
+
 ## 🚀 Quick Commands Reference
 
 ### AI Chat Interface (Recommended)

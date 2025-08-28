@@ -207,35 +207,50 @@ public class ToolRegistry {
         let database = Database(path: dbPath)
         
         if useHybrid {
-            // Use hybrid search (BM25 + embeddings)
+            // Use unified search orchestrator for best results
             let embeddingsService = EmbeddingsService()
             let hybridSearch = HybridSearch(database: database, embeddingsService: embeddingsService)
+            let enhancedSearch = EnhancedHybridSearch(database: database, embeddingsService: embeddingsService)
+            
+            let unifiedOrchestrator = UnifiedSearchOrchestrator(
+                database: database,
+                hybridSearch: hybridSearch,
+                enhancedHybridSearch: enhancedSearch
+            )
             
             do {
-                let results = try await hybridSearch.search(query: query, limit: limit)
-                let hasEmbeddingResults = results.contains { $0.embeddingScore > 0.0 }
-                let searchResults = results.map { hybridResult -> SearchResult in
+                let unifiedResults = try await unifiedOrchestrator.search(
+                    query: query,
+                    limit: limit,
+                    sources: [],
+                    includeQueryExpansion: true
+                )
+                
+                let searchResults = unifiedResults.map { unifiedResult -> SearchResult in
                     return SearchResult(
-                        id: hybridResult.documentId,
-                        type: hybridResult.appSource,
-                        title: hybridResult.title,
-                        snippet: hybridResult.snippet,
-                        contextInfo: hybridResult.sourcePath ?? "",
-                        rank: Double(hybridResult.score),
-                        sourcePath: hybridResult.sourcePath
+                        id: unifiedResult.id,
+                        type: unifiedResult.source,
+                        title: unifiedResult.title,
+                        snippet: unifiedResult.content,
+                        contextInfo: unifiedResult.metadata["source_path"] as? String ?? "",
+                        rank: unifiedResult.score,
+                        sourcePath: unifiedResult.metadata["source_path"] as? String
                     )
                 }
                 
                 // Cache the results
                 CacheManager.shared.cacheSearchResults(searchResults, for: query)
                 
+                let searchPaths = Array(Set(unifiedResults.map { $0.searchPath.rawValue }))
+                
                 return [
                     "results": searchResults.map { $0.toDictionary() },
-                    "search_type": hasEmbeddingResults ? "hybrid" : "bm25_only",
+                    "search_type": "unified",
+                    "search_paths_used": searchPaths,
                     "count": searchResults.count
                 ]
             } catch {
-                // Silently fall back to BM25 (could add verbose flag later)
+                // Fall back to BM25 if unified search fails
                 // Fall through to BM25
             }
         }

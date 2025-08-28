@@ -60,7 +60,7 @@ public class HybridSearch {
             limit: limit * 2
         )
         
-            return combineResults(
+            return combineResultsWithProgressiveFallback(
                 bm25Results: bm25Results,
                 embeddingResults: embeddingResults,
                 limit: limit
@@ -101,9 +101,42 @@ public class HybridSearch {
         return database.searchEmbeddings(queryVector: queryVector, limit: limit)
     }
     
+    private func combineResultsWithProgressiveFallback(
+        bm25Results: [(String, Float, String)],
+        embeddingResults: [(String, Float, String)],
+        limit: Int
+    ) -> [HybridSearchResult] {
+        // Progressive thresholds: start high for precision, fall back for recall
+        let thresholds: [Float] = [0.4, 0.25, 0.15, 0.05]
+        let minResultsForEarlyReturn = max(1, limit / 2)
+        
+        for threshold in thresholds {
+            let results = combineResults(
+                bm25Results: bm25Results,
+                embeddingResults: embeddingResults,
+                threshold: threshold,
+                limit: limit
+            )
+            
+            // Return early if we have enough good results
+            if results.count >= minResultsForEarlyReturn {
+                return results
+            }
+        }
+        
+        // Final fallback: return whatever we can find with the lowest threshold
+        return combineResults(
+            bm25Results: bm25Results,
+            embeddingResults: embeddingResults,
+            threshold: 0.01, // Very low threshold for maximum recall
+            limit: limit
+        )
+    }
+    
     private func combineResults(
         bm25Results: [(String, Float, String)],
         embeddingResults: [(String, Float, String)],
+        threshold: Float,
         limit: Int
     ) -> [HybridSearchResult] {
         var combinedScores: [String: (bm25: Float, embedding: Float, snippet: String)] = [:]
@@ -139,9 +172,8 @@ public class HybridSearch {
         let results = combinedScores.compactMap { (docId, scores) -> HybridSearchResult? in
             let combinedScore = (scores.bm25 * bm25Weight) + (scores.embedding * embeddingWeight)
             
-            // Filter out results with very low relevance scores
-            // This prevents returning random content when no good matches exist
-            guard combinedScore > 0.3 else { return nil }
+            // Use the provided threshold for filtering
+            guard combinedScore > threshold else { return nil }
             
             guard let document = try? fetchDocument(id: docId) else { return nil }
             

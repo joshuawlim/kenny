@@ -1,0 +1,383 @@
+{
+  "projectMeta": {
+    "name": "Kenny AI Chat System",
+    "version": "v1.0-current",
+    "lastUpdated": "2025-08-28T00:00:00Z",
+    "status": "active"
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "type": "functional",
+      "description": "Fix tool signature problems in get_recent_messages() and other tool functions",
+      "priority": "critical",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Zero tool calling errors",
+        "All tool functions work correctly with current Mistral model",
+        "Parameter mismatches resolved"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1"
+    },
+    {
+      "id": "REQ-002",
+      "type": "functional",
+      "description": "Implement enhanced fuzzy matching for contact search",
+      "priority": "critical",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "95%+ name resolution accuracy",
+        "Can match 'Courtney' to 'Courtney Elyse Lim'",
+        "Levenshtein distance + phonetic algorithms implemented"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1"
+    },
+    {
+      "id": "REQ-003",
+      "type": "functional",
+      "description": "Verify and fix database count discrepancies",
+      "priority": "critical",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Actual document counts verified vs claimed 234K+",
+        "Database integrity confirmed",
+        "No stale data issues"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1"
+    },
+    {
+      "id": "REQ-004",
+      "type": "functional",
+      "description": "Migrate from Mistral to Qwen3-30B LLM",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Qwen3-30B successfully deployed via Ollama",
+        "Superior tool calling performance achieved",
+        "Backward compatibility maintained"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 2"
+    },
+    {
+      "id": "REQ-005",
+      "type": "functional",
+      "description": "Implement LangGraph orchestration framework",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Multi-tool orchestration enabled",
+        "Streaming chain-of-thought reasoning display",
+        "Tool confirmation workflows implemented",
+        "<10s response time for complex queries"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 2"
+    },
+    {
+      "id": "REQ-006",
+      "type": "functional",
+      "description": "Build multi-tool query pipeline",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Handle 3+ tool complex queries like 'Courtney asked about chess for Micah'",
+        "Parallel tool execution with conflict resolution",
+        "Source freshness weighting",
+        "Query decomposition and synthesis"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 2"
+    },
+    {
+      "id": "REQ-007",
+      "type": "functional",
+      "description": "Integrate Mem0 memory layer for persistent learning",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Mem0 deployed locally with hybrid vector/graph/KV storage",
+        "90%+ learned associations remembered across sessions",
+        "User-persistent memory with decay weights",
+        "Proactive memory suggestions",
+        "Editable memories interface"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 3"
+    },
+    {
+      "id": "REQ-008",
+      "type": "functional",
+      "description": "Implement context and session management",
+      "priority": "high",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Cross-session conversation continuity",
+        "Relevance detection for proactive information surfacing",
+        "Communication pattern learning"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 3"
+    },
+    {
+      "id": "REQ-009",
+      "type": "functional",
+      "description": "Build hybrid real-time data ingestion system",
+      "priority": "medium",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "<5s startup time",
+        "Quick startup sync (last 24h) with progress bars",
+        "Background full sync with status indicators",
+        "Real-time webhook integration",
+        "Real-time data freshness"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 4"
+    },
+    {
+      "id": "REQ-010",
+      "type": "non-functional",
+      "description": "Enhanced reasoning transparency and audit trails",
+      "priority": "medium",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "Streaming chain-of-thought display polished",
+        "Confidence scoring implemented",
+        "Source attribution added",
+        "Comprehensive logging and audit trails"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 4"
+    }
+  ],
+  "roadmap": {
+    "phases": [
+      {
+        "name": "Phase 1: Critical Foundation Fixes",
+        "targetDate": "2025-09-11",
+        "status": "on-hold",
+        "milestones": [
+          "All tool signature errors resolved",
+          "Database integrity verified",
+          "95%+ name resolution accuracy achieved"
+        ],
+        "dependencies": [],
+        "priority": "critical",
+        "duration": "2 weeks"
+      },
+      {
+        "name": "Phase 2: LLM Migration & Multi-Tool Orchestration", 
+        "targetDate": "2025-09-25",
+        "status": "pending",
+        "milestones": [
+          "Qwen3-30B successfully deployed",
+          "LangGraph orchestration framework operational",
+          "Complex multi-tool queries working"
+        ],
+        "dependencies": ["Phase 1"],
+        "priority": "high",
+        "duration": "2 weeks"
+      },
+      {
+        "name": "Phase 3: Memory & Learning System",
+        "targetDate": "2025-10-09", 
+        "status": "pending",
+        "milestones": [
+          "Mem0 memory layer integrated",
+          "Cross-session continuity working",
+          "User pattern learning operational"
+        ],
+        "dependencies": ["Phase 2"],
+        "priority": "high",
+        "duration": "2 weeks"
+      },
+      {
+        "name": "Phase 4: Data Ingestion & Polish",
+        "targetDate": "2025-10-23",
+        "status": "pending", 
+        "milestones": [
+          "Real-time ingestion system deployed",
+          "Enhanced transparency features complete",
+          "Performance targets met"
+        ],
+        "dependencies": ["Phase 3"],
+        "priority": "medium",
+        "duration": "2 weeks"
+      }
+    ]
+  },
+  "completedWork": [
+    {
+      "id": "WORK-001",
+      "description": "Research completed on latest LLM models (Qwen3, DeepSeek-R1) and orchestration frameworks",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-004",
+      "notes": "Identified Qwen3-30B as superior choice for tool calling, released April 2025"
+    },
+    {
+      "id": "WORK-002", 
+      "description": "Implementation plan approved with timeline and priorities",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "ALL",
+      "notes": "8-week plan with 4 phases, critical issues prioritized first"
+    },
+    {
+      "id": "WORK-003",
+      "description": "Current state analysis and issue identification completed",
+      "completedDate": "2025-08-28T00:00:00Z", 
+      "relatedRequirement": "ALL",
+      "notes": "5 major issues identified: tool signatures, fuzzy matching, orchestration, memory, stale data"
+    }
+  ],
+  "openTasks": [
+    {
+      "id": "TASK-001",
+      "description": "Audit and fix get_recent_messages() signature errors",
+      "priority": "critical",
+      "estimatedEffort": "3-5 days",
+      "blockers": ["Waiting for other ongoing fixes to complete"],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1",
+      "status": "on-hold"
+    },
+    {
+      "id": "TASK-002",
+      "description": "Verify actual document counts vs claimed 234K+ documents",
+      "priority": "critical", 
+      "estimatedEffort": "1-2 days",
+      "blockers": ["Waiting for other ongoing fixes to complete"],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1",
+      "status": "on-hold"
+    },
+    {
+      "id": "TASK-003",
+      "description": "Implement Levenshtein distance + phonetic algorithms for fuzzy matching",
+      "priority": "critical",
+      "estimatedEffort": "4-6 days", 
+      "blockers": ["Waiting for other ongoing fixes to complete"],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "phase": "Phase 1",
+      "status": "on-hold"
+    }
+  ],
+  "knownIssues": [
+    {
+      "id": "ISSUE-001",
+      "description": "Tool signature problems causing tool call failures in get_recent_messages() and other functions",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "None - blocks core functionality"
+    },
+    {
+      "id": "ISSUE-002",
+      "description": "Contact search uses exact LIKE queries, cannot match partial names like 'Courtney' to 'Courtney Elyse Lim'",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z", 
+      "status": "open",
+      "workaround": "Users must provide exact names"
+    },
+    {
+      "id": "ISSUE-003",
+      "description": "No multi-tool orchestration - single-shot tool calls only, cannot handle complex reasoning chains",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open", 
+      "workaround": "Users must break down complex queries manually"
+    },
+    {
+      "id": "ISSUE-004",
+      "description": "No persistent memory system - cannot learn user patterns or remember corrections across sessions",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Users must re-teach preferences each session"
+    },
+    {
+      "id": "ISSUE-005",
+      "description": "Stale data issues - no fresh data ingestion on startup, potential database count discrepancies",
+      "severity": "medium",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Manual database refresh required"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "decision": "Migrate from Mistral 3.1 Small to Qwen3-30B for LLM",
+      "rationale": "Qwen3-30B has superior tool calling capabilities, released April 2025, better performance for complex reasoning",
+      "alternatives": ["DeepSeek-R1", "Continue with Mistral", "GPT-4 via API"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Significant improvement in tool calling accuracy and complex query handling"
+    },
+    {
+      "id": "DEC-002", 
+      "decision": "Use LangGraph for orchestration framework",
+      "rationale": "Lowest latency, graph-based workflows ideal for multi-tool coordination, streaming support",
+      "alternatives": ["CrewAI", "AutoGPT", "Custom orchestration"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Enables complex multi-tool reasoning chains with optimal performance"
+    },
+    {
+      "id": "DEC-003",
+      "decision": "Integrate Mem0 for memory layer",
+      "rationale": "26% better accuracy than OpenAI Memory, 91% faster, supports hybrid vector/graph/KV storage locally",
+      "alternatives": ["OpenAI Memory", "Custom memory system", "Redis-based memory"],
+      "date": "2025-08-28T00:00:00Z", 
+      "impact": "Persistent learning and user pattern recognition across sessions"
+    },
+    {
+      "id": "DEC-004",
+      "decision": "Implement hybrid real-time/batch data ingestion",
+      "rationale": "Balance between startup speed and data freshness - quick sync for recent data, background full sync",
+      "alternatives": ["Pure real-time", "Pure batch", "On-demand only"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Fast startup times while maintaining data currency"
+    },
+    {
+      "id": "DEC-005",
+      "decision": "Hold implementation until other ongoing fixes complete",
+      "rationale": "Avoid cross-cutting issues and conflicts with current system modifications",
+      "alternatives": ["Proceed in parallel", "Pause other fixes"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Delayed timeline but reduced risk of integration conflicts"
+    }
+  ],
+  "currentArchitecture": {
+    "llm": "Mistral 3.1 Small via Ollama",
+    "backend": "Python FastAPI (ollama_kenny.py)",
+    "database": "SQLite (kenny.db + contact_memory.db)", 
+    "frontend": "Next.js React chat interface",
+    "tools": "3 functions (search_documents, search_contacts, get_recent_messages)"
+  },
+  "targetArchitecture": {
+    "llm": "Qwen3-30B via Ollama",
+    "backend": "Python FastAPI with LangGraph orchestration",
+    "database": "SQLite + Mem0 hybrid storage",
+    "frontend": "Next.js React with streaming chain-of-thought display",
+    "tools": "Enhanced multi-tool pipeline with orchestration"
+  },
+  "successMetrics": {
+    "phase1": [
+      "Zero tool calling errors",
+      "95%+ name resolution accuracy"
+    ],
+    "phase2": [
+      "Handle 3+ tool complex queries",
+      "<10s response time"
+    ],
+    "phase3": [
+      "Remember 90%+ learned associations across sessions"
+    ],
+    "phase4": [
+      "<5s startup time",
+      "Real-time data freshness"
+    ]
+  }
+}

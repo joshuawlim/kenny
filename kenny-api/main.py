@@ -667,6 +667,10 @@ async def assistant_query_generator(request: AssistantQuery) -> AsyncGenerator[s
                 "description": "Propose meeting time slots based on calendar availability"
             },
             {
+                "name": "get_recent_messages",
+                "description": "Get recent messages from the last N days across all data sources"
+            },
+            {
                 "name": "get_system_status",
                 "description": "Get system status and health information"
             }
@@ -1286,6 +1290,22 @@ class OrchestratorService:
                 }
             }
         
+        elif tool_name == "get_recent_messages":
+            # Handle parameters with proper defaults
+            days = parameters.get("days", 7)
+            source = parameters.get("source")
+            limit = parameters.get("limit", 50)
+            
+            # Import the function from ollama_kenny
+            from ollama_kenny import get_recent_messages
+            
+            try:
+                result = get_recent_messages(days=days, source=source, limit=limit)
+                return {"status": "success", "data": result}
+            except Exception as e:
+                logger.error(f"get_recent_messages failed: {e}")
+                return {"status": "error", "error": str(e)}
+        
         else:
             return {"status": "error", "error": f"Unknown tool: {tool_name}"}
 
@@ -1328,6 +1348,15 @@ async def list_available_tools():
                 "parameters": {
                     "participants": {"type": "string", "required": True},
                     "duration": {"type": "integer", "default": 60}
+                }
+            },
+            {
+                "name": "get_recent_messages",
+                "description": "Get recent messages from the last N days",
+                "parameters": {
+                    "days": {"type": "integer", "default": 7},
+                    "source": {"type": "string", "description": "Filter by source: whatsapp, mail, messages, calendar, contacts"},
+                    "limit": {"type": "integer", "default": 50}
                 }
             },
             {

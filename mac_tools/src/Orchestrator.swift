@@ -76,10 +76,42 @@ public class Orchestrator {
         
         let limit = request.parameters["limit"] as? Int ?? 20
         let types = request.parameters["types"] as? [String] ?? []
-        let useHybrid = request.parameters["hybrid"] as? Bool ?? true
+        let useUnified = request.parameters["unified"] as? Bool ?? true
         
-        // Use hybrid search if available and requested
-        if useHybrid, let hybridSearch = self.hybridSearch {
+        // Use unified search orchestrator for best results
+        if useUnified {
+            do {
+                let unifiedSearchOrchestrator = UnifiedSearchOrchestrator(
+                    database: database,
+                    hybridSearch: hybridSearch,
+                    enhancedHybridSearch: enhancedSearch
+                )
+                
+                let unifiedResults = try await unifiedSearchOrchestrator.search(
+                    query: query,
+                    limit: limit,
+                    sources: types,
+                    includeQueryExpansion: true
+                )
+                
+                return UserResponse(
+                    type: .searchResults,
+                    success: true,
+                    data: [
+                        "results": unifiedResults.map { $0.toDictionary() }, 
+                        "search_type": "unified",
+                        "search_paths_used": Array(Set(unifiedResults.map { $0.searchPath.rawValue }))
+                    ],
+                    message: "Found \(unifiedResults.count) results for '\(query)' using unified search"
+                )
+            } catch {
+                print("Unified search failed, falling back to hybrid: \(error)")
+                // Fall through to hybrid search
+            }
+        }
+        
+        // Fallback to hybrid search if available
+        if let hybridSearch = self.hybridSearch {
             do {
                 let hybridResults = try await hybridSearch.search(query: query, limit: limit)
                 return UserResponse(
@@ -94,7 +126,7 @@ public class Orchestrator {
             }
         }
         
-        // Perform traditional multi-domain BM25 search as fallback
+        // Final fallback to traditional multi-domain BM25 search
         let results = database.searchMultiDomain(query, types: types, limit: limit)
         
         return UserResponse(

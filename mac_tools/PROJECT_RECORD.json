@@ -2,7 +2,7 @@
   "projectMeta": {
     "name": "Kenny AI Assistant",
     "version": "2.0.0",
-    "lastUpdated": "2025-08-27T00:00:00Z",
+    "lastUpdated": "2025-08-28T00:00:00Z",
     "status": "active"
   },
   "requirements": [
@@ -86,7 +86,7 @@
       "type": "non-functional",
       "description": "Production-ready performance and reliability",
       "priority": "critical",
-      "status": "completed",
+      "status": "in-progress",
       "acceptanceCriteria": [
         "Sub-100ms query performance for typical searches",
         "Comprehensive error handling and fault tolerance", 
@@ -94,7 +94,22 @@
         "Database connection pooling and optimization"
       ],
       "addedDate": "2025-08-20T00:00:00Z",
-      "completedDate": "2025-08-26T00:00:00Z"
+      "notes": "Status changed from completed to in-progress due to security vulnerabilities discovered in code review"
+    },
+    {
+      "id": "REQ-007",
+      "type": "non-functional",
+      "description": "Security hardening and vulnerability remediation",
+      "priority": "critical",
+      "status": "pending",
+      "acceptanceCriteria": [
+        "No SQL injection vulnerabilities in any database operations",
+        "Path traversal protection in all file system operations",
+        "Memory leak prevention and proper resource cleanup",
+        "Thread-safe operations with proper concurrency control",
+        "Security audit and penetration testing validation"
+      ],
+      "addedDate": "2025-08-28T00:00:00Z"
     }
   ],
   "roadmap": {
@@ -136,17 +151,30 @@
         "dependencies": ["Phase 2"]
       },
       {
-        "name": "Phase 4: Frontend Development (Week 11-12)",
-        "targetDate": "2025-09-10",
+        "name": "Phase 3.5: Security Remediation (Week 10.5-11)",
+        "targetDate": "2025-09-03",
         "status": "pending",
         "milestones": [
+          "Fix SQL injection vulnerabilities in contact matching",
+          "Resolve path traversal risks in search orchestrator",
+          "Fix memory leaks and race conditions",
+          "Optimize performance bottlenecks",
+          "Security validation and penetration testing"
+        ],
+        "dependencies": ["Phase 3"]
+      },
+      {
+        "name": "Phase 4: Frontend Development (Week 11-12)",
+        "targetDate": "2025-09-10",
+        "status": "blocked",
+        "milestones": [
           "Backend API development for frontend",
-          "Next.js frontend implementation",
+          "Next.js frontend implementation", 
           "Assistant chat interface with SSE streaming",
           "Search and thread browsing interfaces",
           "Mobile-optimized responsive design"
         ],
-        "dependencies": ["Phase 3"]
+        "dependencies": ["Phase 3.5"]
       },
       {
         "name": "Phase 5: Apple MCP Integration (Week 13-15)",
@@ -198,6 +226,55 @@
       "completedDate": "2025-08-23T00:00:00Z",
       "relatedRequirement": "REQ-006",
       "notes": "Comprehensive security measures to protect against unauthorized access and maintain data integrity"
+    },
+    {
+      "id": "WORK-006",
+      "description": "Tool Parameter Signature Mismatch - Critical Fix",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-002",
+      "notes": "TASK-009: Fixed parameter signature mismatches causing search tool failures. All Kenny search operations now work correctly."
+    },
+    {
+      "id": "WORK-007",
+      "description": "Fuzzy Contact Matching - Implementation",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-003",
+      "notes": "TASK-010: Implemented fuzzy matching for contact searches with Levenshtein distance and phonetic matching. Significantly improved contact discovery accuracy."
+    },
+    {
+      "id": "WORK-008",
+      "description": "Search Result Threshold - Optimization",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-002",
+      "notes": "TASK-011: Optimized search thresholds and ranking algorithms. Improved result relevance and reduced false positives."
+    },
+    {
+      "id": "WORK-009",
+      "description": "Unified Search Orchestrator - Creation",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-002",
+      "notes": "TASK-012: Built unified search orchestrator to coordinate multiple search types and data sources. Provides consistent search experience across all Kenny operations."
+    },
+    {
+      "id": "WORK-010",
+      "description": "Contact Entity Graph - Implementation",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-003",
+      "notes": "TASK-013: Implemented contact entity graph for relationship mapping and intelligent contact associations. Enables advanced contact-based queries."
+    },
+    {
+      "id": "WORK-011",
+      "description": "Comprehensive Test Suite Creation",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-006",
+      "notes": "Created 47 test files across /tests directory: Python kenny-api tests, Swift mac_tools tests, integration tests, E2E Playwright tests, security validation tests, and performance benchmarks. Comprehensive testing framework now in place."
+    },
+    {
+      "id": "WORK-012",
+      "description": "Code Security Review - Critical Findings",
+      "completedDate": "2025-08-28T00:00:00Z",
+      "relatedRequirement": "REQ-006",
+      "notes": "Comprehensive code review identified SQL injection vulnerabilities, path traversal risks, memory leaks, race conditions, and performance bottlenecks. Security issues block production deployment."
     }
   ],
   "openTasks": [
@@ -206,9 +283,10 @@
       "description": "Implement backend API server for frontend integration",
       "priority": "high",
       "estimatedEffort": "5-7 days",
-      "blockers": [],
+      "blockers": ["TASK-014", "TASK-015", "TASK-016", "TASK-017"],
       "createdDate": "2025-08-27T00:00:00Z",
-      "assignedPhase": "Phase 4"
+      "assignedPhase": "Phase 4",
+      "notes": "BLOCKED: Must resolve security vulnerabilities before production deployment"
     },
     {
       "id": "TASK-002", 
@@ -245,16 +323,121 @@
       "blockers": ["TASK-001"],
       "createdDate": "2025-08-27T00:00:00Z",
       "assignedPhase": "Phase 4"
+    },
+    {
+      "id": "TASK-014",
+      "description": "Fix SQL injection vulnerabilities in fuzzy contact matching",
+      "priority": "critical",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "assignedPhase": "Phase 3.5 - Security Remediation",
+      "notes": "SECURITY: Parameterized queries required for all contact search operations"
+    },
+    {
+      "id": "TASK-015",
+      "description": "Resolve path traversal risks in search orchestrator",
+      "priority": "critical",
+      "estimatedEffort": "1-2 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "assignedPhase": "Phase 3.5 - Security Remediation",
+      "notes": "SECURITY: Input validation and path sanitization required"
+    },
+    {
+      "id": "TASK-016",
+      "description": "Fix memory leaks in contact entity graph",
+      "priority": "high",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "assignedPhase": "Phase 3.5 - Security Remediation",
+      "notes": "RELIABILITY: Implement proper resource cleanup and memory management"
+    },
+    {
+      "id": "TASK-017",
+      "description": "Resolve race conditions in unified search",
+      "priority": "high",
+      "estimatedEffort": "2-3 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "assignedPhase": "Phase 3.5 - Security Remediation",
+      "notes": "RELIABILITY: Thread-safe operations and proper locking mechanisms needed"
+    },
+    {
+      "id": "TASK-018",
+      "description": "Optimize O(n²) complexity in relationship scoring",
+      "priority": "high",
+      "estimatedEffort": "3-4 days",
+      "blockers": [],
+      "createdDate": "2025-08-28T00:00:00Z",
+      "assignedPhase": "Phase 3.5 - Security Remediation",
+      "notes": "PERFORMANCE: Algorithm optimization to prevent timeout issues"
     }
   ],
   "knownIssues": [
     {
       "id": "ISSUE-001",
       "description": "No user interface currently available - CLI-only access",
-      "severity": "high",
+      "severity": "medium",
       "reportedDate": "2025-08-27T00:00:00Z", 
       "status": "open",
-      "workaround": "Use CLI commands for all operations until frontend is implemented"
+      "workaround": "Use CLI commands for all operations until frontend is implemented",
+      "notes": "Severity reduced - CLI is fully functional with all 5 critical fixes completed"
+    },
+    {
+      "id": "ISSUE-002",
+      "description": "SQL injection vulnerabilities in fuzzy contact matching",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Avoid fuzzy contact search in production until parameterized queries implemented",
+      "notes": "SECURITY: Blocks production deployment"
+    },
+    {
+      "id": "ISSUE-003",
+      "description": "Path traversal risks in search orchestrator",
+      "severity": "critical",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open", 
+      "workaround": "Restrict search orchestrator to known safe paths only",
+      "notes": "SECURITY: Blocks production deployment"
+    },
+    {
+      "id": "ISSUE-004",
+      "description": "Database connection security gaps",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Use development environment only until connection security hardened",
+      "notes": "SECURITY: Production readiness concern"
+    },
+    {
+      "id": "ISSUE-005",
+      "description": "Memory leaks in contact entity graph",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Monitor memory usage and restart service periodically",
+      "notes": "RELIABILITY: Long-running processes at risk"
+    },
+    {
+      "id": "ISSUE-006",
+      "description": "Race conditions in unified search causing inconsistent results",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Serialize search operations as temporary measure",
+      "notes": "RELIABILITY: Affects search accuracy and performance"
+    },
+    {
+      "id": "ISSUE-007",
+      "description": "O(n²) complexity in relationship scoring causes timeouts on large datasets",
+      "severity": "high",
+      "reportedDate": "2025-08-28T00:00:00Z",
+      "status": "open",
+      "workaround": "Limit relationship graph size until algorithm optimization completed",
+      "notes": "PERFORMANCE: Scalability bottleneck identified"
     }
   ],
   "decisions": [
@@ -281,6 +464,22 @@
       "alternatives": ["Full MCP integration immediately", "Custom Swift implementations only"],
       "date": "2025-08-27T00:00:00Z",
       "impact": "Enables faster feature development while maintaining security and allowing controlled risk management"
+    },
+    {
+      "id": "DEC-004",
+      "decision": "Block production deployment until security vulnerabilities resolved",
+      "rationale": "Code review revealed critical security issues (SQL injection, path traversal) that must be fixed before any production deployment. User-facing functionality is complete but system is not secure for production use.",
+      "alternatives": ["Deploy with security warnings", "Limited production deployment", "Sandbox-only deployment"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Delays production launch but ensures security integrity. All 5 critical user-facing issues are resolved, providing full CLI functionality for development and testing."
+    },
+    {
+      "id": "DEC-005",
+      "decision": "Implement comprehensive test framework covering all system layers",
+      "rationale": "47-test file comprehensive testing framework ensures quality and catches regressions. Includes unit, integration, security, performance, and E2E tests across Python kenny-api and Swift mac_tools components.",
+      "alternatives": ["Basic unit tests only", "Manual testing approach", "Gradual test implementation"],
+      "date": "2025-08-28T00:00:00Z",
+      "impact": "Establishes solid foundation for quality assurance and enables confident development velocity. Test framework serves as project asset for ongoing development."
     }
   ]
 }

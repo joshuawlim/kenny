@@ -80,7 +80,9 @@ let package = Package(
                 "ProactiveAssistant.swift",
                 "QueryEnhancementService.swift",
                 "SummarizationService.swift",
-                "EnhancedHybridSearch.swift"
+                "EnhancedHybridSearch.swift",
+                "UnifiedSearchOrchestrator.swift",
+                "ContactEntityGraph.swift"
             ]
         ),
         .executableTarget(
