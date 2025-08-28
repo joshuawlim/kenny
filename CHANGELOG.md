@@ -86,7 +86,7 @@ This release establishes the core foundation for Kenny - a local-first personal 
 ```
 kenny/
 ├── README.md                 # Project overview and quick start
-├── ARCHITECTURE.md           # Technical architecture details  
+├── docs/ARCHITECTURE.md      # Technical architecture details  
 ├── CHANGELOG.md             # This file
 ├── contextPerplexity.md     # Original project vision
 │

@@ -27,16 +27,16 @@ Kenny can call these functions to access your data:
 ### Option 1: Service Manager (Recommended)
 ```bash
 # Start all services automatically
-./service-manager.sh start
+../scripts/service-manager.sh start
 
 # Check status
-./service-manager.sh status
+../scripts/service-manager.sh status
 
 # Open terminals for manual control
-./service-manager.sh terminals
+../scripts/service-manager.sh terminals
 
 # Stop everything
-./service-manager.sh stop
+../scripts/service-manager.sh stop
 ```
 
 ### Option 2: Manual Start
@@ -57,7 +57,7 @@ npm run dev
 
 Run the integration test to verify everything works:
 ```bash
-./test_integration.sh
+../tests/test_integration.sh
 ```
 
 This tests:
@@ -108,7 +108,7 @@ This tests:
 ## Troubleshooting
 
 ### Common Issues:
-1. **Port conflicts**: Use `./stop-all.sh` to kill all Kenny processes
+1. **Port conflicts**: Use `../scripts/stop-all.sh` to kill all Kenny processes
 2. **Ollama not running**: Start with `ollama serve` first
 3. **Model not found**: Pull with `ollama pull mistral-small3.1:latest`
 4. **Frontend 401 errors**: Check API keys match between frontend/.env.local and API
@@ -142,16 +142,16 @@ v0-kenny-frontend/
 └── .env.local              # Environment config
 
 Scripts:
-├── service-manager.sh       # Service management
-├── stop-all.sh             # Emergency stop
-└── test_integration.sh      # Integration tests
+├── scripts/service-manager.sh  # Service management
+├── scripts/stop-all.sh        # Emergency stop
+└── tests/test_integration.sh   # Integration tests
 ```
 
 ### Making Changes:
 1. Edit `ollama_kenny.py` for API changes
 2. Edit `v0-kenny-frontend/app/page.tsx` for UI changes
-3. Restart services with `./service-manager.sh restart`
-4. Run `./test_integration.sh` to verify changes
+3. Restart services with `../scripts/service-manager.sh restart`
+4. Run `../tests/test_integration.sh` to verify changes
 
 ---
 

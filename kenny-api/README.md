@@ -12,7 +12,7 @@ cd /Users/joshwlim/Documents/Kenny/kenny-api
 ./start.sh
 
 # 3. Test the API (in another terminal)
-python3 test_api.py
+python3 ../tests/test_api.py
 ```
 
 The server runs on `http://localhost:8080` and is ready for Cloudflare tunnel access.
@@ -215,7 +215,7 @@ export CONTACT_DB_PATH="/Users/joshwlim/Documents/Kenny/kenny-api/contact_memory
 ### Testing
 ```bash
 # Full API test suite
-python3 test_api.py
+python3 ../tests/test_api.py
 
 # Manual health check
 curl -H "Authorization: Bearer $KENNY_API_KEY" http://localhost:8080/health
